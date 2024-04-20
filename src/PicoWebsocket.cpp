@@ -1,3 +1,5 @@
+#include <set>
+
 #include <Arduino.h>
 #include <Hash.h>
 #include <base64.h>
@@ -32,27 +34,18 @@ uint64_t ntoh(uint64_t v) {
 }
 
 void apply_mask(void * data, uint32_t mask, size_t size, size_t offset = 0) {
+    // TODO: Optimize:  Instead of applying the mask byte by byte, we can
+    // go word by word (4 bytes at a time).  This should give a theoretical
+    // quadriple boost.  However two aspects have to be considered:
+    //   * size may not be divisible by 4
+    //   * word memory access on Espressif boards is only possible at
+    //     aligned addresses
+    // This means we have to go in three steps:
+    //   * go byte by byte until an aligned address is reached
+    //   * go word by word until the remaining size is less than 4 bytes
+    //   * go byte by byte again until the end of the buffer
     uint8_t * c = (uint8_t *) data;
     uint8_t * m = (uint8_t *) &mask;
-
-#if 1
-    // NOTE: This part can be disabled to disable optimizations
-    uint32_t rotated_mask = mask;
-    for (size_t i = 0; i < (offset & 3); ++i) {
-        rotated_mask = (rotated_mask << 8) | (rotated_mask >> 24);
-    }
-
-    uint32_t * w = (uint32_t *) data;
-    uint32_t * e = w + (size >> 2);
-
-    while (w < e) {
-        *w++ ^= rotated_mask;
-    }
-
-    size = size & 3;
-    c = (uint8_t *) w;
-#endif
-
     for (size_t i = 0; i < size; ++i) {
         c[i] ^= m[((i + offset) & 3)];
     }
@@ -285,6 +278,7 @@ int Client::peek() {
 
 String Client::read_http() {
     // TODO: readStringUntil has a timeout, but it's measured separately for each received byte -- replace it.
+    client.setTimeout(1000);
     String line = client.readStringUntil('\r');
     // TODO: check for data in between
     client.readStringUntil('\n');
@@ -316,6 +310,7 @@ std::pair<String, String> Client::read_header() {
 
     const int colon_idx = request.indexOf(':');
     if (colon_idx < 0) {
+        PRINT_DEBUG("Malformed header -- no colon\n");
         on_http_violation();
         return {"", ""};
     }
@@ -390,14 +385,14 @@ Client::Opcode Client::read_head() {
     if (payload_length == 126) {
         uint16_t v;
         if (!read_all(&v, 2)) {
-            PRINT_DEBUG("Error reading header (16-bit payload lenght)\n");
+            PRINT_DEBUG("Error reading header (16-bit payload length)\n");
             return Opcode::ERR;
         }
         payload_length = ntoh(v);
     } else if (payload_length == 127) {
         uint64_t v;
         if (!read_all(&v, 8)) {
-            PRINT_DEBUG("Error reading header (64-bit payload lenght)\n");
+            PRINT_DEBUG("Error reading header (64-bit payload length)\n");
             return Opcode::ERR;
         }
         payload_length = ntoh(v);
@@ -426,6 +421,8 @@ Client::Opcode Client::read_head() {
 void Client::handshake_server() {
     // handle handshake
     const String request = read_http();
+    PRINT_DEBUG("HTTP recv: %s\n", request.c_str());
+
     if (request == "") {
         on_http_violation();
         return;
@@ -467,6 +464,9 @@ void Client::handshake_server() {
 
     // Process headers
     String key;
+    // TODO: Don't collect all protocols.  Instead, allow the user to specify what is expected and only accept that
+    // or, if nothing is specified, accept any protocol suggested by client.
+    std::set<String> protocols;
     bool connection_upgrade = false;
     bool upgrade_websocket = false;
     bool error = false;
@@ -474,31 +474,50 @@ void Client::handshake_server() {
     // TODO: check Host header
 
     while (!error) {
-        const auto header = read_header();
+        auto header = read_header();
         if (header.first == "") {
+            PRINT_DEBUG("End of headers reached");
             break;
         } else if (header.first == "connection") {
-            if (header.second == "Upgrade") {
+            header.second.toLowerCase();
+            if (header.second == "upgrade") {
                 connection_upgrade = true;
             } else {
                 error = true;
+                PRINT_DEBUG("HTTP Header Connection has incorrect value\n");
             }
         } else if (header.first == "upgrade") {
+            header.second.toLowerCase();
             if (header.second == "websocket") {
                 upgrade_websocket = true;
             } else {
                 error = true;
+                PRINT_DEBUG("HTTP Header Upgrade has incorrect value\n");
             }
         } else if (header.first == "sec-websocket-key") {
             key = header.second;
+        } else if (header.first == "sec-websocket-protocol") {
+            const String & values = header.second;
+            int start = 0;
+
+            while (start < values.length()) {
+                const int space = values.indexOf(' ', start);
+                const int end = (space < 0) ? values.length() : space;
+
+                if (end > start) {
+                    protocols.insert(values.substring(start, end));
+                }
+                start = end + 1;
+            }
         }
     }
 
-    if (error || key == "" || !connection_upgrade || !upgrade_websocket) {
+    if (error || key == "" || !connection_upgrade || !upgrade_websocket || protocols.empty()) {
         client.print(
             "HTTP/1.1 400 Bad request\r\n"
             "Content-Length: 0\r\n"
         );
+
         on_http_error();
     }
 
@@ -509,9 +528,9 @@ void Client::handshake_server() {
             "Upgrade: websocket\r\n"
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Accept: %s\r\n"
-            "Sec-WebSocket-Protocol: chat\r\n\r\n"
+            "Sec-WebSocket-Protocol: %s\r\n\r\n"
         ),
-        calc_key(key).c_str());
+        calc_key(key).c_str(), protocols.begin()->c_str());
 
     // The websocket connection is all set up now.
     PRINT_DEBUG("Handshake complete\n");

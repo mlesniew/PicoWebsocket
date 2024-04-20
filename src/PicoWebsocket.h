@@ -116,8 +116,12 @@ class Server {
         class Client: public SocketOwner<ClientSocket>, public PicoWebsocket::Client {
             public:
                 Client(const ClientSocket & client): SocketOwner<ClientSocket>(client), PicoWebsocket::Client(this->socket, false) {
-                    handshake_server();
+                    if (this->client.connected()) {
+                        handshake_server();
+                    }
                 }
+
+                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::Client(this->socket, false) { }
         };
 
         Server(ServerSocket & server): server(server) { }
