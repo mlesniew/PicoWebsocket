@@ -6,9 +6,11 @@
 #include <WiFiClient.h>
 #include <WiFiServer.h>
 
-class Websocket: public ::Client {
+namespace PicoWebsocket {
+
+class Client: public ::Client {
     public:
-        Websocket(::Client & client, bool is_client = true);
+        Client(::Client & client, bool is_client = true);
 
         virtual int connect(IPAddress ip, uint16_t port) override {
             // TODO: Implement
@@ -104,22 +106,24 @@ class SocketOwner {
 };
 
 template <typename ServerSocket>
-class WebsocketServer {
+class Server {
     protected:
         ServerSocket & server;
 
     public:
         using ClientSocket = decltype(server.accept());
 
-        class Client: public SocketOwner<ClientSocket>, public Websocket {
+        class Client: public SocketOwner<ClientSocket>, public PicoWebsocket::Client {
             public:
-                Client(const ClientSocket & client): SocketOwner<ClientSocket>(client), Websocket(this->socket, false) {
+                Client(const ClientSocket & client): SocketOwner<ClientSocket>(client), PicoWebsocket::Client(this->socket, false) {
                     handshake_server();
                 }
         };
 
-        WebsocketServer(ServerSocket & server): server(server) { }
+        Server(ServerSocket & server): server(server) { }
 
         Client accept() { return Client(server.accept()); }
         void begin() { server.begin(); }
 };
+
+}

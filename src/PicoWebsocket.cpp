@@ -2,7 +2,7 @@
 #include <Hash.h>
 #include <base64.h>
 
-#include "websocket.h"
+#include "PicoWebsocket.h"
 
 #define PRINT_DEBUG(...) Serial.printf("DBG " __VA_ARGS__)
 
@@ -66,7 +66,9 @@ String calc_key(const String & challenge) {
 
 }
 
-size_t Websocket::write_all(const void * buffer, const size_t size) {
+namespace PicoWebsocket {
+
+size_t Client::write_all(const void * buffer, const size_t size) {
     size_t bytes_written = 0;
     while (client.connected() && (bytes_written < size)) {
         bytes_written += client.write(((uint8_t *) buffer) + bytes_written, size - bytes_written);
@@ -74,7 +76,7 @@ size_t Websocket::write_all(const void * buffer, const size_t size) {
     return bytes_written == size ? size : 0;
 }
 
-size_t Websocket::read_all(const void * buffer, const size_t size, const unsigned long timeout_ms) {
+size_t Client::read_all(const void * buffer, const size_t size, const unsigned long timeout_ms) {
     size_t bytes_read = 0;
     const unsigned long start_time = millis();
 
@@ -102,7 +104,7 @@ size_t Websocket::read_all(const void * buffer, const size_t size, const unsigne
     return size;
 }
 
-Websocket::Websocket(::Client & client, bool is_client):
+Client::Client(::Client & client, bool is_client):
     client(client),
     is_client(is_client),
     mask(0),
@@ -110,7 +112,7 @@ Websocket::Websocket(::Client & client, bool is_client):
     write_continue(false)
 {}
 
-size_t Websocket::read_payload(void * buffer, const size_t size, const bool all) {
+size_t Client::read_payload(void * buffer, const size_t size, const bool all) {
     const size_t bytes_read = all ? read_all(buffer, size) : client.read((uint8_t *) buffer, size);
 
     if (!is_client) {
@@ -123,7 +125,7 @@ size_t Websocket::read_payload(void * buffer, const size_t size, const bool all)
     return bytes_read;
 }
 
-size_t Websocket::write_payload(const void * payload, const size_t size) {
+size_t Client::write_payload(const void * payload, const size_t size) {
     if (is_client) {
         // TODO: Is there a more clever way for masking outgoing data?
         const size_t buffer_size = size < 128 ? size : 128;
@@ -144,32 +146,32 @@ size_t Websocket::write_payload(const void * payload, const size_t size) {
     }
 }
 
-size_t Websocket::write_frame(Opcode opcode, bool fin, const void * payload, size_t size) {
+size_t Client::write_frame(Opcode opcode, bool fin, const void * payload, size_t size) {
     write_head(opcode, fin, size);
     return write_payload(payload, size);
 }
 
-void Websocket::pong(const void * payload, size_t size) {
+void Client::pong(const void * payload, size_t size) {
     write_frame(Opcode::CTRL_PONG, true, payload, size);
 }
 
-void Websocket::ping(const void * payload, size_t size) {
+void Client::ping(const void * payload, size_t size) {
     write_frame(Opcode::CTRL_PING, true, payload, size);
 }
 
-void Websocket::close(uint16_t reason) {
+void Client::close(uint16_t reason) {
     // TODO: Add support for a text description
     reason = ntoh(reason);
     write_frame(Opcode::CTRL_CLOSE, true, &reason, reason ? 2 : 0);
 }
 
-size_t Websocket::write(const void * buffer, size_t size, bool fin, bool bin) {
+size_t Client::write(const void * buffer, size_t size, bool fin, bool bin) {
     const Opcode opcode = write_continue ? Opcode::DATA_CONTINUATION : (bin ? Opcode::DATA_BINARY : Opcode::DATA_TEXT);
     write_continue = !fin;
     return write_frame(opcode, fin, buffer, size);
 }
 
-bool Websocket::await_data_frame() {
+bool Client::await_data_frame() {
     while (client.available()) {
         const Opcode opcode = read_head();
 
@@ -227,7 +229,7 @@ bool Websocket::await_data_frame() {
     return false;
 }
 
-int Websocket::available() {
+int Client::available() {
     size_t frame_remain = in_frame_size - in_frame_pos;
 
     if (!frame_remain) {
@@ -249,7 +251,7 @@ int Websocket::available() {
     return frame_remain < socket_available ? frame_remain : socket_available;
 }
 
-int Websocket::read(uint8_t * buffer, size_t size) {
+int Client::read(uint8_t * buffer, size_t size) {
     // TODO: Read data from multiple frames if available
     if (in_frame_pos >= in_frame_size) {
         if (!await_data_frame()) {
@@ -262,7 +264,7 @@ int Websocket::read(uint8_t * buffer, size_t size) {
     return read_payload(buffer, read_size);
 }
 
-int Websocket::peek() {
+int Client::peek() {
     if (!available()) {
         // no payload data waiting in buffer
         return -1;
@@ -281,7 +283,7 @@ int Websocket::peek() {
     return c;
 }
 
-String Websocket::read_http() {
+String Client::read_http() {
     // TODO: readStringUntil has a timeout, but it's measured separately for each received byte -- replace it.
     String line = client.readStringUntil('\r');
     // TODO: check for data in between
@@ -290,22 +292,22 @@ String Websocket::read_http() {
     return line;
 }
 
-void Websocket::on_http_error() {
+void Client::on_http_error() {
     PRINT_DEBUG("HTTP protocol error\n");
     client.stop();
 }
 
-void Websocket::on_http_violation() {
+void Client::on_http_violation() {
     PRINT_DEBUG("HTTP protocol violation\n");
     client.stop();
 }
 
-void Websocket::on_violation() {
+void Client::on_violation() {
     PRINT_DEBUG("Websocket protocol violation\n");
     client.stop();
 }
 
-std::pair<String, String> Websocket::read_header() {
+std::pair<String, String> Client::read_header() {
     String request = read_http();
 
     if (request == "") {
@@ -331,7 +333,7 @@ std::pair<String, String> Websocket::read_header() {
     return std::make_pair(name, value);
 }
 
-void Websocket::write_head(Opcode opcode, bool fin, size_t payload_length) {
+void Client::write_head(Opcode opcode, bool fin, size_t payload_length) {
     PRINT_DEBUG("OUT: fin=%i opcode=%1x len=%u\n",
                 fin, opcode, payload_length);
 
@@ -369,7 +371,7 @@ void Websocket::write_head(Opcode opcode, bool fin, size_t payload_length) {
     write_all(buffer, pos - buffer);
 }
 
-Websocket::Opcode Websocket::read_head() {
+Client::Opcode Client::read_head() {
     uint8_t head[2];
 
     if (!read_all(head, 2)) {
@@ -421,7 +423,7 @@ Websocket::Opcode Websocket::read_head() {
 }
 
 
-void Websocket::handshake_server() {
+void Client::handshake_server() {
     // handle handshake
     const String request = read_http();
     if (request == "") {
@@ -513,4 +515,6 @@ void Websocket::handshake_server() {
 
     // The websocket connection is all set up now.
     PRINT_DEBUG("Handshake complete\n");
+}
+
 }
