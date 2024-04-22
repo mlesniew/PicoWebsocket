@@ -1,5 +1,3 @@
-#include <set>
-
 #include <Arduino.h>
 #include <Hash.h>
 #include <base64.h>
@@ -97,7 +95,7 @@ size_t Client::read_all(const void * buffer, const size_t size, const unsigned l
     return size;
 }
 
-Client::Client(::Client & client, bool is_client):
+Client::Client(::Client & client, String protocol, bool is_client):
     client(client),
     is_client(is_client),
     mask(0),
@@ -445,7 +443,7 @@ void Client::handshake_server() {
     if (version != "HTTP/1.1") {
         client.print(
             "HTTP/1.1 505 HTTP Version Not Supported\r\n"
-            "Content-Length: 0\r\n"
+            "Content-Length: 0\r\n\r\n"
         );
         on_http_error();
         return;
@@ -454,7 +452,7 @@ void Client::handshake_server() {
     if (method != "GET") {
         client.print(
             "HTTP/1.1 405 Method Not Allowed\r\n"
-            "Content-Length: 0\r\n"
+            "Content-Length: 0\r\n\r\n"
         );
         on_http_error();
         return;
@@ -463,13 +461,13 @@ void Client::handshake_server() {
     // TODO: process the URL?
 
     // Process headers
-    String key;
-    // TODO: Don't collect all protocols.  Instead, allow the user to specify what is expected and only accept that
-    // or, if nothing is specified, accept any protocol suggested by client.
-    std::set<String> protocols;
+    String sec_websocket_key;
+    String sec_websocket_protocol;
+    bool subprotocol_ok = (protocol.length() == 0);
     bool connection_upgrade = false;
     bool upgrade_websocket = false;
     bool error = false;
+
     // TODO: check Origin header if present
     // TODO: check Host header
 
@@ -495,42 +493,43 @@ void Client::handshake_server() {
                 PRINT_DEBUG("HTTP Header Upgrade has incorrect value\n");
             }
         } else if (header.first == "sec-websocket-key") {
-            key = header.second;
+            sec_websocket_key = header.second;
         } else if (header.first == "sec-websocket-protocol") {
-            const String & values = header.second;
             int start = 0;
-
-            while (start < values.length()) {
-                const int space = values.indexOf(' ', start);
-                const int end = (space < 0) ? values.length() : space;
-
+            while (start < (int) header.second.length()) {
+                const int space = header.second.indexOf(' ', start);
+                const int end = (space < 0) ? header.second.length() : space;
                 if (end > start) {
-                    protocols.insert(values.substring(start, end));
+                    sec_websocket_protocol = header.second.substring(start, end);
+                    subprotocol_ok = subprotocol_ok || (sec_websocket_protocol == protocol);
                 }
                 start = end + 1;
             }
         }
     }
 
-    if (error || key == "" || !connection_upgrade || !upgrade_websocket || protocols.empty()) {
+    if (error || sec_websocket_key == "" || !connection_upgrade || !upgrade_websocket || !subprotocol_ok) {
         client.print(
             "HTTP/1.1 400 Bad request\r\n"
-            "Content-Length: 0\r\n"
+            "Content-Length: 0\r\n\r\n"
         );
-
         on_http_error();
+        return;
     }
 
     // All looks good, accept connection upgrade
     client.printf(
-        (
-            "HTTP/1.1 101 Switching Protocols\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            "Sec-WebSocket-Accept: %s\r\n"
-            "Sec-WebSocket-Protocol: %s\r\n\r\n"
-        ),
-        calc_key(key).c_str(), protocols.begin()->c_str());
+        "HTTP/1.1 101 Switching Protocols\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Accept: %s\r\n",
+        calc_key(sec_websocket_key).c_str());
+
+    if (sec_websocket_protocol) {
+        client.printf("Sec-WebSocket-Protocol: %s\r\n", sec_websocket_protocol.c_str());
+    }
+
+    client.print("\r\n");
 
     // The websocket connection is all set up now.
     PRINT_DEBUG("Handshake complete\n");

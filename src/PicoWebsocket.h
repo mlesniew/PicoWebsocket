@@ -10,7 +10,7 @@ namespace PicoWebsocket {
 
 class Client: public ::Client {
     public:
-        Client(::Client & client, bool is_client = true);
+        Client(::Client & client, String protocol = "", bool is_client = true);
 
         virtual int connect(IPAddress ip, uint16_t port) override {
             // TODO: Implement
@@ -51,6 +51,8 @@ class Client: public ::Client {
         void close(uint16_t reason = 0);
 
         void handshake_server();
+
+        String protocol;
     protected:
 
         enum Opcode : uint8_t {
@@ -115,19 +117,23 @@ class Server {
 
         class Client: public SocketOwner<ClientSocket>, public PicoWebsocket::Client {
             public:
-                Client(const ClientSocket & client): SocketOwner<ClientSocket>(client), PicoWebsocket::Client(this->socket, false) {
+                Client(const ClientSocket & client, String protocol): SocketOwner<ClientSocket>(client),
+                    PicoWebsocket::Client(this->socket, protocol, false) {
                     if (this->client.connected()) {
                         handshake_server();
                     }
                 }
 
-                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::Client(this->socket, false) { }
+                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::Client(this->socket,
+                            other.protocol, false) { }
         };
 
-        Server(ServerSocket & server): server(server) { }
+        Server(ServerSocket & server, String protocol = ""): server(server), protocol(protocol) { }
 
-        Client accept() { return Client(server.accept()); }
+        Client accept() { return Client(server.accept(), protocol); }
         void begin() { server.begin(); }
+
+        String protocol;
 };
 
 }
