@@ -6,6 +6,10 @@
 #include <WiFiClient.h>
 #include <WiFiServer.h>
 
+#ifndef PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH
+#define PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH 128
+#endif
+
 namespace PicoWebsocket {
 
 class Client: public ::Client {
@@ -65,7 +69,7 @@ class Client: public ::Client {
             ERR = 0xff,
         };
 
-        String read_http();
+        String read_http(const unsigned long timeout_ms);
 
         void discard_incoming_data();
         void on_http_error();

@@ -274,14 +274,63 @@ int Client::peek() {
     return c;
 }
 
-String Client::read_http() {
-    // TODO: readStringUntil has a timeout, but it's measured separately for each received byte -- replace it.
-    client.setTimeout(1000);
-    String line = client.readStringUntil('\r');
-    // TODO: check for data in between
-    client.readStringUntil('\n');
-    PRINT_DEBUG("HTTP line received: %s\n", line.c_str());
-    return line;
+String Client::read_http(const unsigned long timeout_ms = 1000) {
+    const unsigned long start_time = millis();
+
+    bool ending = false;
+
+    uint8_t buffer[PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH + 1];
+    size_t pos = 0;
+    while (true) {
+
+        if (pos >= PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH) {
+            // max line length reached
+            // TODO: Return the right HTTP code
+            PRINT_DEBUG("HTTP line too long.\n");
+            on_http_error();
+            return "";
+        }
+
+        const int c = client.read();
+        if (c < 0) {
+            // no more data available
+            if (millis() - start_time > timeout_ms) {
+                // time out reached
+                PRINT_DEBUG("Timeout waiting for HTTP data\n");
+                on_http_error(); // TODO: is this a violation?
+                return "";
+            }
+
+            yield();
+            continue;
+        }
+
+        // got a valid char
+        if (ending) {
+            // we're waiting for the trailing \n, anything else is a protocol violation
+            if (c != '\n') {
+                PRINT_DEBUG("Invalid HTTP line ending\n");
+                on_http_violation();
+                return "";
+            } else {
+                buffer[pos] = '\0';
+                PRINT_DEBUG("HTTP line received: %s\n", (const char *) buffer);
+                return (const char *) buffer;
+            }
+        } else {
+            if (c == '\r') {
+                // end of line found, wait for the \n now
+                ending = true;
+            } else if (c < 0x20 || c == 0x7f) {
+                // control character
+                PRINT_DEBUG("Illegal HTTP line character\n");
+                on_http_violation();
+                return "";
+            } else {
+                buffer[pos++] = (uint8_t) c;
+            }
+        }
+    }
 }
 
 void Client::discard_incoming_data() {
@@ -427,9 +476,9 @@ Client::Opcode Client::read_head() {
 
 void Client::handshake_server() {
     // handle handshake
-    const String request = read_http();
-    PRINT_DEBUG("HTTP recv: %s\n", request.c_str());
+    const unsigned long start_time = millis();
 
+    const String request = read_http();
     if (request == "") {
         on_http_violation();
         return;
