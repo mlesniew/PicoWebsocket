@@ -284,18 +284,27 @@ String Client::read_http() {
     return line;
 }
 
+void Client::discard_incoming_data() {
+    while (client.available()) {
+        client.read();
+    }
+}
+
 void Client::on_http_error() {
     PRINT_DEBUG("HTTP protocol error\n");
+    discard_incoming_data();
     client.stop();
 }
 
 void Client::on_http_violation() {
     PRINT_DEBUG("HTTP protocol violation\n");
+    discard_incoming_data();
     client.stop();
 }
 
 void Client::on_violation() {
     PRINT_DEBUG("Websocket protocol violation\n");
+    discard_incoming_data();
     client.stop();
 }
 
