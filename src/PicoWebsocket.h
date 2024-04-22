@@ -72,10 +72,9 @@ class Client: public ::Client {
         String read_http(const unsigned long timeout_ms);
 
         void discard_incoming_data();
-        void on_http_error();
+        void on_http_error(const unsigned short code, const String & message);
         void on_http_violation();
         void on_violation();
-        void on_error();
 
         std::pair<String, String> read_header();
         bool await_data_frame();

@@ -285,9 +285,7 @@ String Client::read_http(const unsigned long timeout_ms = 1000) {
 
         if (pos >= PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH) {
             // max line length reached
-            // TODO: Return the right HTTP code
-            PRINT_DEBUG("HTTP line too long.\n");
-            on_http_error();
+            on_http_error(414, F("HTTP line too long"));
             return "";
         }
 
@@ -296,8 +294,7 @@ String Client::read_http(const unsigned long timeout_ms = 1000) {
             // no more data available
             if (millis() - start_time > timeout_ms) {
                 // time out reached
-                PRINT_DEBUG("Timeout waiting for HTTP data\n");
-                on_http_error(); // TODO: is this a violation?
+                on_http_error(408, F("Request timeout"));
                 return "";
             }
 
@@ -334,21 +331,25 @@ String Client::read_http(const unsigned long timeout_ms = 1000) {
 }
 
 void Client::discard_incoming_data() {
+    PRINT_DEBUG("Discarding remaining received data\n");
     while (client.available()) {
         client.read();
     }
 }
 
-void Client::on_http_error() {
-    PRINT_DEBUG("HTTP protocol error\n");
+void Client::on_http_error(const unsigned short code, const String & message) {
+    PRINT_DEBUG("HTTP protocol error %u %s\n", code, message.c_str());
     discard_incoming_data();
+    client.printf(
+        "%u %s\r\n"
+        "Content-Length: 0\r\n\r\n",
+        code, message.c_str());
     client.stop();
 }
 
 void Client::on_http_violation() {
     PRINT_DEBUG("HTTP protocol violation\n");
-    discard_incoming_data();
-    client.stop();
+    on_http_error(400, F("Protocol Violation"));
 }
 
 void Client::on_violation() {
@@ -366,7 +367,7 @@ std::pair<String, String> Client::read_header() {
 
     const int colon_idx = request.indexOf(':');
     if (colon_idx < 0) {
-        PRINT_DEBUG("Malformed header -- no colon\n");
+        PRINT_DEBUG("Malformed HTTP header: colon missing\n");
         on_http_violation();
         return {"", ""};
     }
@@ -476,8 +477,6 @@ Client::Opcode Client::read_head() {
 
 void Client::handshake_server() {
     // handle handshake
-    const unsigned long start_time = millis();
-
     const String request = read_http();
     if (request == "") {
         on_http_violation();
@@ -499,20 +498,12 @@ void Client::handshake_server() {
     const String version = request.substring(url_end + 1);
 
     if (version != "HTTP/1.1") {
-        client.print(
-            "HTTP/1.1 505 HTTP Version Not Supported\r\n"
-            "Content-Length: 0\r\n\r\n"
-        );
-        on_http_error();
+        on_http_error(505, F("HTTP Version Not Supported"));
         return;
     }
 
     if (method != "GET") {
-        client.print(
-            "HTTP/1.1 405 Method Not Allowed\r\n"
-            "Content-Length: 0\r\n\r\n"
-        );
-        on_http_error();
+        on_http_error(405, F("Method Not Allowed"));
         return;
     }
 
@@ -567,11 +558,7 @@ void Client::handshake_server() {
     }
 
     if (error || sec_websocket_key == "" || !connection_upgrade || !upgrade_websocket || !subprotocol_ok) {
-        client.print(
-            "HTTP/1.1 400 Bad request\r\n"
-            "Content-Length: 0\r\n\r\n"
-        );
-        on_http_error();
+        on_http_error(400, F("Bad request"));
         return;
     }
 
