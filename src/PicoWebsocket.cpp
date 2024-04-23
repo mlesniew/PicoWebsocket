@@ -100,7 +100,8 @@ Client::Client(::Client & client, String protocol, bool is_client):
     is_client(is_client),
     mask(0),
     in_frame_size(0), in_frame_pos(0),
-    write_continue(false)
+    write_continue(false),
+    closing(false)
 {}
 
 size_t Client::read_payload(void * buffer, const size_t size, const bool all) {
@@ -150,10 +151,38 @@ void Client::ping(const void * payload, size_t size) {
     write_frame(Opcode::CTRL_PING, true, payload, size);
 }
 
-void Client::close(uint16_t reason) {
-    // TODO: Add support for a text description
-    reason = ntoh(reason);
-    write_frame(Opcode::CTRL_CLOSE, true, &reason, reason ? 2 : 0);
+void Client::close(const uint16_t code) {
+    // NOTE: The optional 2-byte code can be followed by a message
+    // for diagnostic purposes.  While it's easy to implement, there
+    // is little value in supporting it and by skipping it we can
+    // save a few bytes.
+    PRINT_DEBUG("Sending close, code=%i\n", code);
+
+    const uint16_t code_be = ntoh(code);
+    closing = true;
+
+    const size_t frame_length = code ? 2 : 0;
+    write_frame(Opcode::CTRL_CLOSE, true, &code_be, frame_length);
+}
+
+void Client::stop() {
+    close(1000);
+    const unsigned long timeout_ms = 1000;
+    const unsigned long start_time = millis();
+    while (client.connected() && (millis() - start_time <= timeout_ms)) {
+        if (!await_data_frame()) {
+            continue;
+        }
+
+        // data frame received, discard it
+        while ((in_frame_pos < in_frame_size) && (millis() - start_time <= timeout_ms)) {
+            // We could read more data at a time and improve performance,
+            // but this code is rarely reached and can only run once per
+            // connection, so the impact is minimal.
+            uint8_t c;
+            read_payload(&c, 1);
+        }
+    }
 }
 
 size_t Client::write(const void * buffer, size_t size, bool fin, bool bin) {
@@ -181,15 +210,25 @@ bool Client::await_data_frame() {
             }
 
             case Opcode::CTRL_CLOSE: {
-                // TODO: Handle close
-                char buf[in_frame_size + 1];
+                uint8_t buf[in_frame_size];
                 if (!read_payload(buf, in_frame_size, true)) {
                     // read failed, we're already disconnected
                     break;
                 }
-                buf[in_frame_size] = '\0';
-                Serial.printf("Close: %i - %s\n", ntoh(*((uint16_t *) buf)), buf + 2);
-                close(1000);
+
+                const uint16_t code = (in_frame_size >= 2) ? (((uint16_t) buf[0] << 8) | (uint16_t) buf[1]) : 0;
+                PRINT_DEBUG("Received close, code=%i\n", code);
+
+                if (!closing) {
+                    // WebSocket was not in closing state.  We're entering it now.
+                    // We could send a close reply later, but we do it right away
+                    // as we're not allowed to send any data frames from this point
+                    // on anyway.
+                    close(code);
+                }
+
+                // We were in closing state or have just entered it.
+                // The connection can be closed now.
                 client.stop();
                 break;
             }
@@ -211,7 +250,6 @@ bool Client::await_data_frame() {
             }
 
             default: {
-                close(1002);    // protocol violation
                 on_violation();
                 break;
             }
@@ -354,6 +392,9 @@ void Client::on_http_violation() {
 
 void Client::on_violation() {
     PRINT_DEBUG("Websocket protocol violation\n");
+    close(1002);
+    // After a close frame we should wait for a close reply, but since we've
+    // encountered a protocol violation, we give up the connection right away.
     discard_incoming_data();
     client.stop();
 }

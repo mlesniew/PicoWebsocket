@@ -39,10 +39,7 @@ class Client: public ::Client {
         virtual int peek() override;
 
         virtual void flush() override { client.flush(); }
-        virtual void stop() override {
-            // TODO: Consider sending close first... but then we'll need to wait for the reply too.
-            client.stop();
-        }
+        virtual void stop() override;
 
         virtual uint8_t connected() override {
             return client.connected();
@@ -52,7 +49,7 @@ class Client: public ::Client {
 
         void ping(const void * payload = nullptr, size_t size = 0);
         void pong(const void * payload = nullptr, size_t size = 0);
-        void close(uint16_t reason = 0);
+        void close(const uint16_t code = 0);
 
         void handshake_server();
 
@@ -102,6 +99,7 @@ class Client: public ::Client {
 
         // state
         bool write_continue;
+        bool closing;
 };
 
 template <typename Socket>
