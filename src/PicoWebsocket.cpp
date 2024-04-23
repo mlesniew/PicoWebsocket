@@ -10,29 +10,6 @@
 
 namespace {
 
-uint16_t ntoh(uint16_t v) {
-    return ((v & 0xff00) >> 8)
-           | ((v & 0x00ff) << 8);
-}
-
-uint32_t ntoh(uint32_t v) {
-    return ((v & 0xff000000) >> 24)
-           | ((v & 0x00ff0000) >> 8)
-           | ((v & 0x0000ff00) << 8)
-           | ((v & 0x000000ff) << 24);
-}
-
-uint64_t ntoh(uint64_t v) {
-    return ((v & 0xff00000000000000) >> 56)
-           | ((v & 0x00ff000000000000) >> 40)
-           | ((v & 0x0000ff0000000000) >> 24)
-           | ((v & 0x000000ff00000000) >> 8)
-           | ((v & 0x00000000ff000000) << 8)
-           | ((v & 0x0000000000ff0000) << 24)
-           | ((v & 0x000000000000ff00) << 40)
-           | ((v & 0x00000000000000ff) << 56);
-}
-
 void apply_mask(void * data, uint32_t mask, size_t size, size_t offset = 0) {
     // TODO: Optimize:  Instead of applying the mask byte by byte, we can
     // go word by word (4 bytes at a time).  This should give a theoretical
@@ -162,11 +139,14 @@ void Client::close(const uint16_t code) {
     // save a few bytes.
     PRINT_DEBUG("Sending close, code=%i\n", code);
 
-    const uint16_t code_be = ntoh(code);
+    uint8_t buffer[2];
+    buffer[0] = (uint8_t) (code >> 8);
+    buffer[1] = (uint8_t) (code & 0xff);
+
     closing = true;
 
     const size_t frame_length = code ? 2 : 0;
-    write_frame(Opcode::CTRL_CLOSE, true, &code_be, frame_length);
+    write_frame(Opcode::CTRL_CLOSE, true, buffer, frame_length);
 }
 
 void Client::stop() {
