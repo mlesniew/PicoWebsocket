@@ -79,7 +79,7 @@ size_t Client::read_all(const void * buffer, const size_t size, const unsigned l
             }
             // connection intact, but no data yet -- timout exceeded?
             const unsigned long elapsed_ms = millis() - start_time;
-            if (elapsed_ms >= timeout_ms) {
+            if (elapsed_ms >= socket_timeout_ms) {
                 // timeout, drop connection
                 client.stop();
                 return 0;
@@ -95,14 +95,16 @@ size_t Client::read_all(const void * buffer, const size_t size, const unsigned l
     return size;
 }
 
-Client::Client(::Client & client, String protocol, bool is_client):
+Client::Client(::Client & client, String protocol, unsigned long socket_timeout_ms, bool is_client):
+    protocol(protocol),
+    socket_timeout_ms(socket_timeout_ms),
     client(client),
     is_client(is_client),
     mask(0),
     in_frame_size(0), in_frame_pos(0),
     write_continue(false),
-    closing(false)
-{}
+    closing(false) {
+}
 
 size_t Client::read_payload(void * buffer, const size_t size, const bool all) {
     const size_t bytes_read = all ? read_all(buffer, size) : client.read((uint8_t *) buffer, size);
@@ -167,15 +169,14 @@ void Client::close(const uint16_t code) {
 
 void Client::stop() {
     close(1000);
-    const unsigned long timeout_ms = 1000;
     const unsigned long start_time = millis();
-    while (client.connected() && (millis() - start_time <= timeout_ms)) {
+    while (client.connected() && (millis() - start_time <= socket_timeout_ms)) {
         if (!await_data_frame()) {
             continue;
         }
 
         // data frame received, discard it
-        while ((in_frame_pos < in_frame_size) && (millis() - start_time <= timeout_ms)) {
+        while ((in_frame_pos < in_frame_size) && (millis() - start_time <= socket_timeout_ms)) {
             // We could read more data at a time and improve performance,
             // but this code is rarely reached and can only run once per
             // connection, so the impact is minimal.
@@ -300,7 +301,6 @@ int Client::peek() {
     }
 
     // at this point we're guaranteed there's data waiting on the client and that the next byte is payload data
-
     uint8_t c = (uint8_t) client.peek();
 
     if (!is_client) {
@@ -400,7 +400,7 @@ void Client::on_violation() {
 }
 
 std::pair<String, String> Client::read_header() {
-    String request = read_http();
+    String request = read_http(socket_timeout_ms);
 
     if (request == "") {
         return {"", ""};
@@ -467,13 +467,12 @@ void Client::write_head(Opcode opcode, bool fin, size_t payload_length) {
 Client::Opcode Client::read_head() {
     uint8_t head[2];
 
-    if (!read_all(head, 2)) {
+    if (!read_all(head, 2, socket_timeout_ms)) {
         Serial.println("Short read reading head (2).");
         return Opcode::ERR;
     }
 
     // TODO: Use less reads to get the full frame header
-
     const bool fin = head[0] & (1 << 7);
     const Opcode opcode = static_cast<Opcode>(head[0] & 0xf);
 
@@ -482,14 +481,14 @@ Client::Opcode Client::read_head() {
 
     if (payload_length == 126) {
         uint16_t v;
-        if (!read_all(&v, 2)) {
+        if (!read_all(&v, 2, socket_timeout_ms)) {
             PRINT_DEBUG("Error reading header (16-bit payload length)\n");
             return Opcode::ERR;
         }
         payload_length = ntoh(v);
     } else if (payload_length == 127) {
         uint64_t v;
-        if (!read_all(&v, 8)) {
+        if (!read_all(&v, 8, socket_timeout_ms)) {
             PRINT_DEBUG("Error reading header (64-bit payload length)\n");
             return Opcode::ERR;
         }
@@ -498,19 +497,39 @@ Client::Opcode Client::read_head() {
 
     if (has_mask) {
         // mask is stored in big endian
-        if (!read_all(&mask, 4)) {
+        if (!read_all(&mask, 4, socket_timeout_ms)) {
             PRINT_DEBUG("Error reading header (masking key)\n");
             return Opcode::ERR;
         }
     }
 
-    // TODO: Check frame for protocol correctness
-
     in_frame_pos = 0;
     in_frame_size = payload_length;
 
-    PRINT_DEBUG("Websocket Frame: fin=%i opcode=%1x mask=%08x len=%llu mask_key=%08x\n",
-                fin, opcode, mask, payload_length, is_client ? 0 : mask);
+    PRINT_DEBUG("Frame recv: opcode=%1x fin=%i mask=%08x len=%llu mask_key=%08x\n",
+                opcode, fin, mask, payload_length, is_client ? 0 : mask);
+
+    // Frame header is now received successfully, run a simple check
+    // to see if it conforms to the RFC.
+    if ((uint8_t)(opcode) & 0x8) {
+        // this is a control frame
+        if (!fin) {
+            PRINT_DEBUG("Fragmented control frame received\n");
+            on_violation();
+            return Opcode::ERR;
+        }
+        if (payload_length >= 126) {
+            PRINT_DEBUG("Control frame too long\n");
+            on_violation();
+            return Opcode::ERR;
+        }
+    }
+
+    if (is_client == has_mask) {
+        PRINT_DEBUG("Masking error\n");
+        on_violation();
+        return Opcode::ERR;
+    }
 
     return opcode;
 }

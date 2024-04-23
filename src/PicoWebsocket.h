@@ -14,7 +14,7 @@ namespace PicoWebsocket {
 
 class Client: public ::Client {
     public:
-        Client(::Client & client, String protocol = "", bool is_client = true);
+        Client(::Client & client, String protocol = "", unsigned long socket_timeout_ms = 1000, bool is_client = true);
 
         virtual int connect(IPAddress ip, uint16_t port) override {
             // TODO: Implement
@@ -54,6 +54,8 @@ class Client: public ::Client {
         void handshake_server();
 
         String protocol;
+        unsigned long socket_timeout_ms;
+
     protected:
 
         enum Opcode : uint8_t {
@@ -84,8 +86,7 @@ class Client: public ::Client {
         size_t read_payload(void * buffer, const size_t size, const bool all = false);
         size_t write_payload(const void * payload, const size_t size);
 
-        // TODO: Make timeout_ms configurable from public API
-        size_t read_all(const void * buffer, const size_t size, const unsigned long timeout_ms = 1000);
+        size_t read_all(const void * buffer, const size_t size, const unsigned long timeout_ms);
         size_t write_all(const void * buffer, const size_t size);
 
         ::Client & client;
