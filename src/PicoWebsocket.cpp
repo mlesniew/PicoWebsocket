@@ -1,3 +1,5 @@
+#include <limits>
+
 #include <Arduino.h>
 #include <Hash.h>
 #include <base64.h>
@@ -107,7 +109,7 @@ Client::Client(::Client & client, String protocol, unsigned long socket_timeout_
 }
 
 size_t Client::read_payload(void * buffer, const size_t size, const bool all) {
-    const size_t bytes_read = all ? read_all(buffer, size) : client.read((uint8_t *) buffer, size);
+    const size_t bytes_read = all ? read_all(buffer, size, socket_timeout_ms) : client.read((uint8_t *) buffer, size);
 
     if (!is_client) {
         // we're the server, the received data is masked
@@ -168,7 +170,11 @@ void Client::close(const uint16_t code) {
 }
 
 void Client::stop() {
-    close(1000);
+    stop(1000);
+}
+
+void Client::stop(uint16_t code) {
+    close(code);
     const unsigned long start_time = millis();
     while (client.connected() && (millis() - start_time <= socket_timeout_ms)) {
         if (!await_data_frame()) {
@@ -427,8 +433,6 @@ std::pair<String, String> Client::read_header() {
 }
 
 void Client::write_head(Opcode opcode, bool fin, size_t payload_length) {
-    PRINT_DEBUG("OUT: fin=%i opcode=%1x len=%u\n",
-                fin, opcode, payload_length);
 
     uint8_t buffer[14];
     uint8_t * pos = buffer;
@@ -460,6 +464,9 @@ void Client::write_head(Opcode opcode, bool fin, size_t payload_length) {
         memcpy(pos, &mask, 4);
         pos += 4;
     }
+
+    PRINT_DEBUG("Frame send: opcode=%1x fin=%i len=%u mask_key=%08x\n",
+                opcode, fin, payload_length, is_client ? mask : 0);
 
     write_all(buffer, pos - buffer);
 }
@@ -506,8 +513,8 @@ Client::Opcode Client::read_head() {
     in_frame_pos = 0;
     in_frame_size = payload_length;
 
-    PRINT_DEBUG("Frame recv: opcode=%1x fin=%i mask=%08x len=%llu mask_key=%08x\n",
-                opcode, fin, mask, payload_length, is_client ? 0 : mask);
+    PRINT_DEBUG("Frame recv: opcode=%1x fin=%i len=%llu mask_key=%08x\n",
+                opcode, fin, payload_length, is_client ? 0 : mask);
 
     // Frame header is now received successfully, run a simple check
     // to see if it conforms to the RFC.
@@ -528,6 +535,12 @@ Client::Opcode Client::read_head() {
     if (is_client == has_mask) {
         PRINT_DEBUG("Masking error\n");
         on_violation();
+        return Opcode::ERR;
+    }
+
+    if (payload_length > std::numeric_limits<size_t>::max()) {
+        PRINT_DEBUG("Received message too big\n");
+        stop();
         return Opcode::ERR;
     }
 

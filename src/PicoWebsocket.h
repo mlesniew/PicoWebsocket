@@ -89,6 +89,8 @@ class Client: public ::Client {
         size_t read_all(const void * buffer, const size_t size, const unsigned long timeout_ms);
         size_t write_all(const void * buffer, const size_t size);
 
+        void stop(uint16_t code);
+
         ::Client & client;
         const bool is_client;
 
@@ -123,7 +125,7 @@ class Server {
         class Client: public SocketOwner<ClientSocket>, public PicoWebsocket::Client {
             public:
                 Client(const ClientSocket & client, String protocol): SocketOwner<ClientSocket>(client),
-                    PicoWebsocket::Client(this->socket, protocol, false) {
+                    PicoWebsocket::Client(this->socket, protocol, 1000, false) {
                     if (this->client.connected()) {
                         handshake_server();
                     }
