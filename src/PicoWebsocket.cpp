@@ -472,42 +472,39 @@ void Client::write_head(Opcode opcode, bool fin, size_t payload_length) {
 }
 
 Client::Opcode Client::read_head() {
-    uint8_t head[2];
+    uint8_t head[14];
 
     if (!read_all(head, 2, socket_timeout_ms)) {
-        Serial.println("Short read reading head (2).");
+        PRINT_DEBUG("Error reading first 2 header bytes.\n");
         return Opcode::ERR;
     }
 
-    // TODO: Use less reads to get the full frame header
     const bool fin = head[0] & (1 << 7);
     const Opcode opcode = static_cast<Opcode>(head[0] & 0xf);
 
     const bool has_mask = head[1] & (1 << 7);
     uint64_t payload_length = head[1] & 0x7f;
 
-    if (payload_length == 126) {
-        uint16_t v;
-        if (!read_all(&v, 2, socket_timeout_ms)) {
-            PRINT_DEBUG("Error reading header (16-bit payload length)\n");
-            return Opcode::ERR;
+    const size_t extended_payload_lenght_bytes = payload_length == 126 ? 2 : (payload_length == 127 ? 8 : 0);
+    const size_t remaining_header_size = extended_payload_lenght_bytes + (has_mask ? 4 : 0);
+
+    if (!read_all(head + 2, remaining_header_size, socket_timeout_ms)) {
+        PRINT_DEBUG("Error reading last %u header bytes.\n", remaining_header_size);
+        return Opcode::ERR;
+    }
+
+    uint8_t * pos = head + 2;
+    if (extended_payload_lenght_bytes) {
+        payload_length = 0;
+        for (uint8_t * end = pos + extended_payload_lenght_bytes; pos < end; ++pos) {
+            payload_length = (payload_length << 8) | ((uint64_t) * pos);
+            ++pos;
         }
-        payload_length = ntoh(v);
-    } else if (payload_length == 127) {
-        uint64_t v;
-        if (!read_all(&v, 8, socket_timeout_ms)) {
-            PRINT_DEBUG("Error reading header (64-bit payload length)\n");
-            return Opcode::ERR;
-        }
-        payload_length = ntoh(v);
     }
 
     if (has_mask) {
-        // mask is stored in big endian
-        if (!read_all(&mask, 4, socket_timeout_ms)) {
-            PRINT_DEBUG("Error reading header (masking key)\n");
-            return Opcode::ERR;
-        }
+        // mask is stored in big endian, no need to invert
+        memcpy(&mask, pos, 4);
     }
 
     in_frame_pos = 0;
