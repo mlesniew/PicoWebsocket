@@ -9,20 +9,8 @@
 
 namespace PicoWebsocket {
 
-class Client: public ::Client {
+class ClientBase: public ::Client {
     public:
-        Client(::Client & client, String protocol = "", unsigned long socket_timeout_ms = 1000, bool is_client = true);
-
-        virtual int connect(IPAddress ip, uint16_t port) override {
-            // TODO: Implement
-            return 0;
-        }
-
-        virtual int connect(const char * host, uint16_t port) override {
-            // TODO: Implement
-            return 0;
-        }
-
         size_t write(const void * buffer, size_t size, bool fin, bool bin = true);
         virtual size_t write(const uint8_t * buffer, size_t size) override { return write(buffer, size, true, true); }
         virtual size_t write(uint8_t c) override { return write(&c, 1); }
@@ -47,10 +35,11 @@ class Client: public ::Client {
         void ping(const void * payload = nullptr, size_t size = 0);
         void pong(const void * payload = nullptr, size_t size = 0);
 
-        String protocol;
         unsigned long socket_timeout_ms;
 
     protected:
+        ClientBase(::Client & client, unsigned long socket_timeout_ms = 1000, bool is_client = true);
+
         virtual void on_pong(const void * data, const size_t size) {};
 
         enum Opcode : uint8_t {
@@ -63,14 +52,16 @@ class Client: public ::Client {
             ERR = 0xff,
         };
 
-        String read_http(const unsigned long timeout_ms);
+        // HTTP related methods
+        virtual void on_http_line_too_long() = 0;
+        virtual void on_http_timeout() = 0;
+        virtual void on_http_violation() = 0;
+        String read_http_line(const unsigned long timeout_ms);
+        std::pair<String, String> read_http_header();
 
         void discard_incoming_data();
-        void on_http_error(const unsigned short code, const String & message);
-        void on_http_violation();
         void on_violation();
 
-        std::pair<String, String> read_header();
         bool await_data_frame();
 
         void write_head(Opcode opcode, bool fin, size_t payload_length);
@@ -101,6 +92,25 @@ class Client: public ::Client {
         bool closing;
 };
 
+class Client: public ClientBase {
+    public:
+        Client(::Client & client, const String & path = "/", const String & protocol = "", unsigned long socket_timeout_ms = 1000): 
+            ClientBase(client, socket_timeout_ms, true), path(path), protocol(protocol) {}
+
+        virtual int connect(IPAddress ip, uint16_t port) override;
+        virtual int connect(const char * host, uint16_t port) override;
+
+        String path;
+        String protocol;
+
+    protected:
+        virtual void on_http_line_too_long() override;
+        virtual void on_http_timeout() override;
+        virtual void on_http_violation() override;
+        void on_http_error();
+        bool handshake(const String & host);
+};
+
 template <typename Socket>
 class SocketOwner {
     public:
@@ -110,6 +120,8 @@ class SocketOwner {
         Socket socket;
 };
 
+class ServerClient;
+
 class ServerInterface {
 public:
     ServerInterface(const String & protocol = "", unsigned long socket_timeout_ms = 1000): protocol(protocol), socket_timeout_ms(socket_timeout_ms) {}
@@ -118,18 +130,26 @@ public:
     virtual bool check_url(const String & url) { return true; }
     virtual bool check_http_header(const String & header, const String & value) { return true; }
 
-    virtual void on_pong(Client & client, const void * data, const size_t size) {}
+    virtual void on_pong(ServerClient & client, const void * data, const size_t size) {}
 
     String protocol;
     unsigned long socket_timeout_ms;
+
 };
 
-class ServerClient: public Client {
+class ServerClient: public ClientBase {
     public:
-        ServerClient(::Client & client, ServerInterface & server): Client(client, server.protocol, server.socket_timeout_ms, false), server(server) {
+        ServerClient(::Client & client, ServerInterface & server): ClientBase(client, server.socket_timeout_ms, false), server(server) {
         }
 
+        virtual int connect(IPAddress ip, uint16_t port) override { return 0; }
+        virtual int connect(const char * host, uint16_t port) override { return 0; }
+
     protected:
+        virtual void on_http_line_too_long() override;
+        virtual void on_http_timeout() override;
+        virtual void on_http_violation() override;
+        void on_http_error(const unsigned short code, const String & message);
         void handshake();
 
         void on_pong(const void * data, const size_t size) { server.on_pong(*this, data, size); }
@@ -147,18 +167,19 @@ class Server: public ServerInterface {
 
         class Client: public SocketOwner<ClientSocket>, public PicoWebsocket::ServerClient {
             public:
-                Client(const ClientSocket & client, String protocol): SocketOwner<ClientSocket>(client),
-                    PicoWebsocket::ServerClient(this->socket, server) {
-                    handshake();
+                Client(const ClientSocket & client, ServerInterface & server): SocketOwner<ClientSocket>(client), PicoWebsocket::ServerClient(this->socket, server) {
+                    if (this->client.connected()) {
+                        handshake();
+                    }
                 }
 
-                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::ServerClient(this->socket, other.server) {}
+                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::ServerClient(this->socket, other.server) { }
         };
 
-        Server(ServerSocket & server, String protocol = "", unsigned long socket_timeout_ms = 1000)
+        Server(ServerSocket & server, const String & protocol = "", unsigned long socket_timeout_ms = 1000)
             : ServerInterface(protocol, socket_timeout_ms), server(server) { }
 
-        Client accept() { return Client(server.accept(), protocol); }
+        Client accept() { return Client(server.accept(), *this); }
         void begin() { server.begin(); }
 };
 

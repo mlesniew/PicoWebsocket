@@ -40,17 +40,37 @@ void apply_mask(void * data, uint32_t mask, size_t size, size_t offset = 0) {
     }
 }
 
+String gen_key() {
+    uint32_t buf[] = { (uint32_t) random(), (uint32_t) random(), (uint32_t) random(), (uint32_t) random() };
+    return base64::encode((uint8_t *) buf, 16);
+}
+
 String calc_key(const String & challenge) {
     uint8_t hash[20];
     sha1(challenge + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11", hash);
     return base64::encode(hash, 20);
 }
 
+String get_subprotocol(const String & sec_websocket_protocol, const String & expected_protocol) {
+    for (int start = 0; start < (int) sec_websocket_protocol.length(); ) {
+        const int space = sec_websocket_protocol.indexOf(' ', start);
+        const int end = (space < 0) ? sec_websocket_protocol.length() : space;
+        if (end > start) {
+            const String val = sec_websocket_protocol.substring(start, end);
+            if ((expected_protocol.length() == 0) || (expected_protocol == val)) {
+                return val;
+            }
+        }
+        start = end + 1;
+    }
+    return "";
+}
+
 }
 
 namespace PicoWebsocket {
 
-size_t Client::write_all(const void * buffer, const size_t size) {
+size_t ClientBase::write_all(const void * buffer, const size_t size) {
     size_t bytes_written = 0;
     while (client.connected() && (bytes_written < size)) {
         bytes_written += client.write(((uint8_t *) buffer) + bytes_written, size - bytes_written);
@@ -58,7 +78,7 @@ size_t Client::write_all(const void * buffer, const size_t size) {
     return bytes_written == size ? size : 0;
 }
 
-size_t Client::read_all(const void * buffer, const size_t size, const unsigned long timeout_ms) {
+size_t ClientBase::read_all(const void * buffer, const size_t size, const unsigned long timeout_ms) {
     size_t bytes_read = 0;
     const unsigned long start_time = millis();
 
@@ -86,8 +106,7 @@ size_t Client::read_all(const void * buffer, const size_t size, const unsigned l
     return size;
 }
 
-Client::Client(::Client & client, String protocol, unsigned long socket_timeout_ms, bool is_client):
-    protocol(protocol),
+ClientBase::ClientBase(::Client & client, unsigned long socket_timeout_ms, bool is_client):
     socket_timeout_ms(socket_timeout_ms),
     client(client),
     is_client(is_client),
@@ -97,7 +116,7 @@ Client::Client(::Client & client, String protocol, unsigned long socket_timeout_
     closing(false) {
 }
 
-size_t Client::read_payload(void * buffer, const size_t size, const bool all) {
+size_t ClientBase::read_payload(void * buffer, const size_t size, const bool all) {
     const size_t bytes_read = all ? read_all(buffer, size, socket_timeout_ms) : client.read((uint8_t *) buffer, size);
 
     if (!is_client) {
@@ -110,7 +129,7 @@ size_t Client::read_payload(void * buffer, const size_t size, const bool all) {
     return bytes_read;
 }
 
-size_t Client::write_payload(const void * payload, const size_t size) {
+size_t ClientBase::write_payload(const void * payload, const size_t size) {
     if (is_client) {
         // TODO: Is there a more clever way for masking outgoing data?
         const size_t buffer_size = size < 128 ? size : 128;
@@ -131,20 +150,20 @@ size_t Client::write_payload(const void * payload, const size_t size) {
     }
 }
 
-size_t Client::write_frame(Opcode opcode, bool fin, const void * payload, size_t size) {
+size_t ClientBase::write_frame(Opcode opcode, bool fin, const void * payload, size_t size) {
     write_head(opcode, fin, size);
     return write_payload(payload, size);
 }
 
-void Client::pong(const void * payload, size_t size) {
+void ClientBase::pong(const void * payload, size_t size) {
     write_frame(Opcode::CTRL_PONG, true, payload, size);
 }
 
-void Client::ping(const void * payload, size_t size) {
+void ClientBase::ping(const void * payload, size_t size) {
     write_frame(Opcode::CTRL_PING, true, payload, size);
 }
 
-void Client::close(const uint16_t code) {
+void ClientBase::close(const uint16_t code) {
     // NOTE: The optional 2-byte code can be followed by a message
     // for diagnostic purposes.  While it's easy to implement, there
     // is little value in supporting it and by skipping it we can
@@ -161,11 +180,11 @@ void Client::close(const uint16_t code) {
     write_frame(Opcode::CTRL_CLOSE, true, buffer, frame_length);
 }
 
-void Client::stop() {
+void ClientBase::stop() {
     stop(1000);
 }
 
-void Client::stop(uint16_t code) {
+void ClientBase::stop(uint16_t code) {
     close(code);
     const unsigned long start_time = millis();
     while (client.connected() && (millis() - start_time <= socket_timeout_ms)) {
@@ -184,13 +203,13 @@ void Client::stop(uint16_t code) {
     }
 }
 
-size_t Client::write(const void * buffer, size_t size, bool fin, bool bin) {
+size_t ClientBase::write(const void * buffer, size_t size, bool fin, bool bin) {
     const Opcode opcode = write_continue ? Opcode::DATA_CONTINUATION : (bin ? Opcode::DATA_BINARY : Opcode::DATA_TEXT);
     write_continue = !fin;
     return write_frame(opcode, fin, buffer, size);
 }
 
-bool Client::await_data_frame() {
+bool ClientBase::await_data_frame() {
     while (client.available()) {
         const Opcode opcode = read_head();
 
@@ -235,7 +254,7 @@ bool Client::await_data_frame() {
             case Opcode::CTRL_PING:
             case Opcode::CTRL_PONG: {
                 char buf[in_frame_size];
-                if (!read_payload(buf, in_frame_size, true)) {
+                if (in_frame_size && !read_payload(buf, in_frame_size, true)) {
                     // read failed, we're already disconnected
                     break;
                 }
@@ -257,7 +276,7 @@ bool Client::await_data_frame() {
     return false;
 }
 
-int Client::available() {
+int ClientBase::available() {
     size_t frame_remain = in_frame_size - in_frame_pos;
 
     if (!frame_remain) {
@@ -279,7 +298,7 @@ int Client::available() {
     return frame_remain < socket_available ? frame_remain : socket_available;
 }
 
-int Client::read(uint8_t * buffer, size_t size) {
+int ClientBase::read(uint8_t * buffer, size_t size) {
     // TODO: Read data from multiple frames if available
     if (in_frame_pos >= in_frame_size) {
         if (!await_data_frame()) {
@@ -292,7 +311,7 @@ int Client::read(uint8_t * buffer, size_t size) {
     return read_payload(buffer, read_size);
 }
 
-int Client::peek() {
+int ClientBase::peek() {
     if (!available()) {
         // no payload data waiting in buffer
         return -1;
@@ -310,7 +329,7 @@ int Client::peek() {
     return c;
 }
 
-String Client::read_http(const unsigned long timeout_ms = 1000) {
+String ClientBase::read_http_line(const unsigned long timeout_ms = 1000) {
     const unsigned long start_time = millis();
 
     bool ending = false;
@@ -321,16 +340,21 @@ String Client::read_http(const unsigned long timeout_ms = 1000) {
 
         if (pos >= PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH) {
             // max line length reached
-            on_http_error(414, F("HTTP line too long"));
+            on_http_line_too_long();
             return "";
         }
 
         const int c = client.read();
         if (c < 0) {
             // no more data available
+            if (!client.connected()) {
+                // the client is disconnected, we won't get more data
+                return "";
+            }
+
             if (millis() - start_time > timeout_ms) {
                 // time out reached
-                on_http_error(408, F("Request timeout"));
+                on_http_timeout();
                 return "";
             }
 
@@ -366,29 +390,14 @@ String Client::read_http(const unsigned long timeout_ms = 1000) {
     }
 }
 
-void Client::discard_incoming_data() {
+void ClientBase::discard_incoming_data() {
     PRINT_DEBUG("Discarding remaining received data\n");
     while (client.available()) {
         client.read();
     }
 }
 
-void Client::on_http_error(const unsigned short code, const String & message) {
-    PRINT_DEBUG("HTTP protocol error %u %s\n", code, message.c_str());
-    discard_incoming_data();
-    client.printf(
-        "%u %s\r\n"
-        "Content-Length: 0\r\n\r\n",
-        code, message.c_str());
-    client.stop();
-}
-
-void Client::on_http_violation() {
-    PRINT_DEBUG("HTTP protocol violation\n");
-    on_http_error(400, F("Protocol Violation"));
-}
-
-void Client::on_violation() {
+void ClientBase::on_violation() {
     PRINT_DEBUG("Websocket protocol violation\n");
     close(1002);
     // After a close frame we should wait for a close reply, but since we've
@@ -397,8 +406,8 @@ void Client::on_violation() {
     client.stop();
 }
 
-std::pair<String, String> Client::read_header() {
-    String request = read_http(socket_timeout_ms);
+std::pair<String, String> ClientBase::read_http_header() {
+    String request = read_http_line(socket_timeout_ms);
 
     if (request == "") {
         return {"", ""};
@@ -424,7 +433,7 @@ std::pair<String, String> Client::read_header() {
     return std::make_pair(name, value);
 }
 
-void Client::write_head(Opcode opcode, bool fin, size_t payload_length) {
+void ClientBase::write_head(Opcode opcode, bool fin, size_t payload_length) {
 
     uint8_t buffer[14];
     uint8_t * pos = buffer;
@@ -463,7 +472,7 @@ void Client::write_head(Opcode opcode, bool fin, size_t payload_length) {
     write_all(buffer, pos - buffer);
 }
 
-Client::Opcode Client::read_head() {
+ClientBase::Opcode ClientBase::read_head() {
     uint8_t head[14];
 
     if (!read_all(head, 2, socket_timeout_ms)) {
@@ -480,7 +489,7 @@ Client::Opcode Client::read_head() {
     const size_t extended_payload_lenght_bytes = payload_length == 126 ? 2 : (payload_length == 127 ? 8 : 0);
     const size_t remaining_header_size = extended_payload_lenght_bytes + (has_mask ? 4 : 0);
 
-    if (!read_all(head + 2, remaining_header_size, socket_timeout_ms)) {
+    if (remaining_header_size && !read_all(head + 2, remaining_header_size, socket_timeout_ms)) {
         PRINT_DEBUG("Error reading last %u header bytes.\n", remaining_header_size);
         return Opcode::ERR;
     }
@@ -536,10 +545,154 @@ Client::Opcode Client::read_head() {
     return opcode;
 }
 
+int Client::connect(IPAddress ip, uint16_t port) {
+    return (client.connect(ip, port) && handshake(ip.toString())) ? 1 : 0;
+}
+
+int Client::connect(const char * host, uint16_t port) {
+    return (client.connect(host, port) && handshake(host)) ? 1 : 0;
+}
+
+void Client::on_http_error() {
+    PRINT_DEBUG("HTTP protocol error\n");
+    discard_incoming_data();
+    client.stop();
+}
+
+void Client::on_http_line_too_long() {
+    on_http_error();
+}
+
+void Client::on_http_timeout() {
+    on_http_error();
+}
+
+void Client::on_http_violation() {
+    PRINT_DEBUG("HTTP protocol violation\n");
+    on_http_error();
+}
+
+bool Client::handshake(const String & host) {
+    const String sec_websocket_key = gen_key();
+
+    Serial.printf(
+        "GET %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "Connection: Upgrade\r\n"
+        "Upgrade: websocket\r\n"
+        "Sec-WebSocket-Key: %s\r\n"
+        "Sec-WebSocket-Version: 13\r\n",
+        path.c_str(),
+        host.c_str(),
+        sec_websocket_key.c_str());
+
+    client.printf(
+        "GET %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "Connection: Upgrade\r\n"
+        "Upgrade: websocket\r\n"
+        "Sec-WebSocket-Key: %s\r\n"
+        "Sec-WebSocket-Version: 13\r\n",
+        path.c_str(),
+        host.c_str(),
+        sec_websocket_key.c_str());
+
+    if (protocol.length()) {
+        client.printf(
+            "Sec-WebSocket-Protocol: %s\r\n",
+            protocol.c_str()
+        );
+    }
+
+    client.print("\r\n");
+
+    const String response = read_http_line();
+    const int code_start = response.indexOf(' ');
+    const int code_end = response.indexOf(' ', code_start + 1);
+    if (code_start < 0 || code_end < 0) {
+        PRINT_DEBUG("Malformed HTTP response: %s\n", response.c_str());
+        on_http_violation();
+        return false;
+    }
+
+    const String version = response.substring(0, code_start);
+    const unsigned int code = response.substring(code_start + 1, code_end).toInt();
+
+    if (version != "HTTP/1.1") {
+        PRINT_DEBUG("Invalid HTTP version: %s\n", version.c_str());
+        on_http_error();
+        return false;
+    }
+
+    if (code != 101) {
+        PRINT_DEBUG("Invalid HTTP response: %u\n", code);
+        on_http_error();
+        return false;
+    }
+
+    bool connection_upgrade = false;
+    bool upgrade_websocket = false;
+    bool sec_websocket_protocol = (protocol.length() == 0);
+    bool sec_websocket_accept = false;
+
+    while (true) {
+        auto header = read_http_header();
+
+        if (header.first == "") {
+            break;
+        } else if (header.first == "connection") {
+            header.second.toLowerCase();
+            connection_upgrade = (header.second == "upgrade");
+        } else if (header.first == "upgrade") {
+            header.second.toLowerCase();
+            upgrade_websocket = (header.second == "websocket");
+        } else if (header.first == "sec-websocket-accept") {
+            sec_websocket_accept = (header.second == calc_key(sec_websocket_key));
+        } else if (header.first == "sec-websocket-protocol") {
+            sec_websocket_protocol = sec_websocket_protocol || (get_subprotocol(header.second, protocol) == protocol);
+        }
+    }
+
+    const bool all_ok = connection_upgrade && upgrade_websocket && sec_websocket_protocol && sec_websocket_accept;
+
+    if (!all_ok) {
+        // we didn't get (some) of the expected headers
+        on_http_error();
+        return false;
+    }
+
+    // The websocket connection is all set up now.
+    PRINT_DEBUG("Handshake complete\n");
+
+    return true;
+}
+
+void ServerClient::on_http_error(const unsigned short code, const String & message) {
+    PRINT_DEBUG("HTTP protocol error %u %s\n", code, message.c_str());
+    discard_incoming_data();
+    client.printf(
+        "HTTP/1.1 %u %s\r\n"
+        "Content-Length: 0\r\n\r\n",
+        code, message.c_str());
+    client.stop();
+}
+
+void ServerClient::on_http_line_too_long() {
+    on_http_error(414, F("HTTP line too long"));
+}
+
+void ServerClient::on_http_timeout() {
+    on_http_error(408, F("Request timeout"));
+}
+
+void ServerClient::on_http_violation() {
+    PRINT_DEBUG("HTTP protocol violation\n");
+    on_http_error(400, F("Protocol Violation"));
+}
 
 void ServerClient::handshake() {
     // handle handshake
-    const String request = read_http();
+    const String request = read_http_line();
     if (request == "") {
         on_http_violation();
         return;
@@ -578,56 +731,35 @@ void ServerClient::handshake() {
     // Process headers
     String sec_websocket_key;
     String sec_websocket_protocol;
-    bool subprotocol_ok = (protocol.length() == 0);
+    bool sec_websocket_protocol_ok = (server.protocol.length() == 0);
     bool connection_upgrade = false;
     bool upgrade_websocket = false;
-    bool error = false;
+    bool headers_ok = true;
 
-    while (!error) {
-        auto header = read_header();
+    while (true) {
+        auto header = read_http_header();
 
-        if (!server.check_http_header(header.first, header.second)) {
-            error = true;
-            PRINT_DEBUG("Header %s: %s rejected.\n", header.first.c_str(), header.second.c_str());
-            break;
-        }
+        headers_ok = headers_ok && server.check_http_header(header.first, header.second);
 
         if (header.first == "") {
-            PRINT_DEBUG("End of headers reached");
             break;
         } else if (header.first == "connection") {
             header.second.toLowerCase();
-            if (header.second == "upgrade") {
-                connection_upgrade = true;
-            } else {
-                error = true;
-                PRINT_DEBUG("HTTP Header Connection has incorrect value\n");
-            }
+            connection_upgrade = (header.second == "upgrade");
         } else if (header.first == "upgrade") {
             header.second.toLowerCase();
-            if (header.second == "websocket") {
-                upgrade_websocket = true;
-            } else {
-                error = true;
-                PRINT_DEBUG("HTTP Header Upgrade has incorrect value\n");
-            }
+            upgrade_websocket = (header.second == "websocket");
         } else if (header.first == "sec-websocket-key") {
             sec_websocket_key = header.second;
         } else if (header.first == "sec-websocket-protocol") {
-            int start = 0;
-            while (start < (int) header.second.length()) {
-                const int space = header.second.indexOf(' ', start);
-                const int end = (space < 0) ? header.second.length() : space;
-                if (end > start) {
-                    sec_websocket_protocol = header.second.substring(start, end);
-                    subprotocol_ok = subprotocol_ok || (sec_websocket_protocol == protocol);
-                }
-                start = end + 1;
-            }
+            sec_websocket_protocol = get_subprotocol(header.second, server.protocol);
+            sec_websocket_protocol_ok = sec_websocket_protocol_ok || (sec_websocket_protocol == server.protocol);
         }
     }
 
-    if (error || sec_websocket_key == "" || !connection_upgrade || !upgrade_websocket || !subprotocol_ok) {
+    const bool all_ok = (headers_ok && connection_upgrade && upgrade_websocket && sec_websocket_protocol && (sec_websocket_key.length() == 24));
+
+    if (!all_ok) {
         on_http_error(400, F("Bad request"));
         return;
     }
