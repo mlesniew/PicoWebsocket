@@ -20,6 +20,8 @@ do
 	if [ ! -f platformio.ini ]
 	then
 		pio init --board=$BOARD
+		echo "monitor_speed = 115200" >> platformio.ini
+		echo "upload_speed = 921600"  >> platformio.ini
 	fi
 	ln -s -f -t src/ "$ROOT_DIR/examples/$EXAMPLE/"*
 	ln -s -f -t lib/ "$ROOT_DIR"
