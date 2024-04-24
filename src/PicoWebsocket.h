@@ -3,9 +3,6 @@
 #include <Arduino.h>
 #include <Client.h>
 
-#include <WiFiClient.h>
-#include <WiFiServer.h>
-
 #ifndef PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH
 #define PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH 128
 #endif

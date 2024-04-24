@@ -1,14 +1,26 @@
 #include <limits>
 
 #include <Arduino.h>
-#include <Hash.h>
 #include <base64.h>
+
+#if defined(ESP32)
+#include <mbedtls/sha1.h>
+#else
+#include <Hash.h>
+#endif
 
 #include "PicoWebsocket.h"
 
 #define PRINT_DEBUG(...) Serial.printf("DBG " __VA_ARGS__)
 
 namespace {
+
+#if defined(ESP32)
+// ESP32 doesn't have an Arduino sha1 function built-in, implement it with mbedtls
+void sha1(const String & text, uint8_t * hash) {
+    mbedtls_sha1_ret((const unsigned char *) text.c_str(), text.length(), hash);
+}
+#endif
 
 void apply_mask(void * data, uint32_t mask, size_t size, size_t offset = 0) {
     // TODO: Optimize:  Instead of applying the mask byte by byte, we can

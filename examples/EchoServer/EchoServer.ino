@@ -1,6 +1,13 @@
 #include <Arduino.h>
 #include <WiFiServer.h>
+
+#if defined(ESP32)
+#include <WiFi.h>
+#elif defined(ESP8266)
 #include <ESP8266WiFi.h>
+#else
+#error "This board is not supported."
+#endif
 
 #include <PicoWebsocket.h>
 
@@ -18,7 +25,7 @@
 
 
 ::WiFiServer server(80);
-PicoWebsocket::Server websocket_server(server);
+PicoWebsocket::Server<::WiFiServer> websocket_server(server);
 
 void setup() {
     Serial.begin(115200);
