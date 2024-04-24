@@ -11,7 +11,11 @@
 
 #include "PicoWebsocket.h"
 
+#ifdef PICOWEBSOCKET_DEBUG
 #define PRINT_DEBUG(...) Serial.printf("DBG " __VA_ARGS__)
+#else
+#define PRINT_DEBUG(...)
+#endif
 
 namespace {
 
