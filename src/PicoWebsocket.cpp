@@ -243,7 +243,7 @@ bool Client::await_data_frame() {
                 if (opcode == Opcode::CTRL_PING) {
                     pong(buf, in_frame_size);
                 } else {
-                    // TODO: Handle pong...
+                    on_pong(buf, in_frame_size);
                 }
                 break;
             }
@@ -537,7 +537,7 @@ Client::Opcode Client::read_head() {
 }
 
 
-void Client::handshake_server() {
+void ServerClient::handshake() {
     // handle handshake
     const String request = read_http();
     if (request == "") {
@@ -569,7 +569,11 @@ void Client::handshake_server() {
         return;
     }
 
-    // TODO: process the URL?
+    if (!server.check_url(url)) {
+        PRINT_DEBUG("URL rejected: %s\n", url.c_str());
+        on_http_error(404, F("Not found"));
+        return;
+    }
 
     // Process headers
     String sec_websocket_key;
@@ -579,11 +583,15 @@ void Client::handshake_server() {
     bool upgrade_websocket = false;
     bool error = false;
 
-    // TODO: check Origin header if present
-    // TODO: check Host header
-
     while (!error) {
         auto header = read_header();
+
+        if (!server.check_http_header(header.first, header.second)) {
+            error = true;
+            PRINT_DEBUG("Header %s: %s rejected.\n", header.first.c_str(), header.second.c_str());
+            break;
+        }
+
         if (header.first == "") {
             PRINT_DEBUG("End of headers reached");
             break;

@@ -46,14 +46,12 @@ class Client: public ::Client {
 
         void ping(const void * payload = nullptr, size_t size = 0);
         void pong(const void * payload = nullptr, size_t size = 0);
-        void close(const uint16_t code = 0);
-
-        void handshake_server();
 
         String protocol;
         unsigned long socket_timeout_ms;
 
     protected:
+        virtual void on_pong(const void * data, const size_t size) {};
 
         enum Opcode : uint8_t {
             DATA_CONTINUATION = 0x0,
@@ -86,6 +84,7 @@ class Client: public ::Client {
         size_t read_all(const void * buffer, const size_t size, const unsigned long timeout_ms);
         size_t write_all(const void * buffer, const size_t size);
 
+        void close(const uint16_t code = 0);
         void stop(uint16_t code);
 
         ::Client & client;
@@ -111,33 +110,56 @@ class SocketOwner {
         Socket socket;
 };
 
+class ServerInterface {
+public:
+    ServerInterface(const String & protocol = "", unsigned long socket_timeout_ms = 1000): protocol(protocol), socket_timeout_ms(socket_timeout_ms) {}
+    virtual ~ServerInterface() {}
+
+    virtual bool check_url(const String & url) { return true; }
+    virtual bool check_http_header(const String & header, const String & value) { return true; }
+
+    virtual void on_pong(Client & client, const void * data, const size_t size) {}
+
+    String protocol;
+    unsigned long socket_timeout_ms;
+};
+
+class ServerClient: public Client {
+    public:
+        ServerClient(::Client & client, ServerInterface & server): Client(client, server.protocol, server.socket_timeout_ms, false), server(server) {
+        }
+
+    protected:
+        void handshake();
+
+        void on_pong(const void * data, const size_t size) { server.on_pong(*this, data, size); }
+
+        ServerInterface & server;
+};
+
 template <typename ServerSocket>
-class Server {
+class Server: public ServerInterface {
     protected:
         ServerSocket & server;
 
     public:
         using ClientSocket = decltype(server.accept());
 
-        class Client: public SocketOwner<ClientSocket>, public PicoWebsocket::Client {
+        class Client: public SocketOwner<ClientSocket>, public PicoWebsocket::ServerClient {
             public:
                 Client(const ClientSocket & client, String protocol): SocketOwner<ClientSocket>(client),
-                    PicoWebsocket::Client(this->socket, protocol, 1000, false) {
-                    if (this->client.connected()) {
-                        handshake_server();
-                    }
+                    PicoWebsocket::ServerClient(this->socket, server) {
+                    handshake();
                 }
 
-                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::Client(this->socket,
-                            other.protocol, false) { }
+                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::ServerClient(this->socket, other.server) {}
         };
 
-        Server(ServerSocket & server, String protocol = ""): server(server), protocol(protocol) { }
+        Server(ServerSocket & server, String protocol = "", unsigned long socket_timeout_ms = 1000)
+            : ServerInterface(protocol, socket_timeout_ms), server(server) { }
 
         Client accept() { return Client(server.accept(), protocol); }
         void begin() { server.begin(); }
-
-        String protocol;
 };
 
 }
