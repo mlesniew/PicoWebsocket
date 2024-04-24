@@ -52,7 +52,7 @@ String calc_key(const String & challenge) {
 }
 
 String get_subprotocol(const String & sec_websocket_protocol, const String & expected_protocol) {
-    for (int start = 0; start < (int) sec_websocket_protocol.length(); ) {
+    for (int start = 0; start < (int) sec_websocket_protocol.length();) {
         const int space = sec_websocket_protocol.indexOf(' ', start);
         const int end = (space < 0) ? sec_websocket_protocol.length() : space;
         if (end > start) {
@@ -171,8 +171,8 @@ void ClientBase::close(const uint16_t code) {
     PRINT_DEBUG("Sending close, code=%i\n", code);
 
     uint8_t buffer[2];
-    buffer[0] = (uint8_t) (code >> 8);
-    buffer[1] = (uint8_t) (code & 0xff);
+    buffer[0] = (uint8_t)(code >> 8);
+    buffer[1] = (uint8_t)(code & 0xff);
 
     closing = true;
 
@@ -757,7 +757,8 @@ void ServerClient::handshake() {
         }
     }
 
-    const bool all_ok = (headers_ok && connection_upgrade && upgrade_websocket && sec_websocket_protocol && (sec_websocket_key.length() == 24));
+    const bool all_ok = (headers_ok && connection_upgrade && upgrade_websocket && sec_websocket_protocol
+                         && (sec_websocket_key.length() == 24));
 
     if (!all_ok) {
         on_http_error(400, F("Bad request"));

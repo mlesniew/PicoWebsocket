@@ -94,7 +94,8 @@ class ClientBase: public ::Client {
 
 class Client: public ClientBase {
     public:
-        Client(::Client & client, const String & path = "/", const String & protocol = "", unsigned long socket_timeout_ms = 1000): 
+        Client(::Client & client, const String & path = "/", const String & protocol = "",
+               unsigned long socket_timeout_ms = 1000):
             ClientBase(client, socket_timeout_ms, true), path(path), protocol(protocol) {}
 
         virtual int connect(IPAddress ip, uint16_t port) override;
@@ -123,23 +124,25 @@ class SocketOwner {
 class ServerClient;
 
 class ServerInterface {
-public:
-    ServerInterface(const String & protocol = "", unsigned long socket_timeout_ms = 1000): protocol(protocol), socket_timeout_ms(socket_timeout_ms) {}
-    virtual ~ServerInterface() {}
+    public:
+        ServerInterface(const String & protocol = "", unsigned long socket_timeout_ms = 1000): protocol(protocol),
+            socket_timeout_ms(socket_timeout_ms) {}
+        virtual ~ServerInterface() {}
 
-    virtual bool check_url(const String & url) { return true; }
-    virtual bool check_http_header(const String & header, const String & value) { return true; }
+        virtual bool check_url(const String & url) { return true; }
+        virtual bool check_http_header(const String & header, const String & value) { return true; }
 
-    virtual void on_pong(ServerClient & client, const void * data, const size_t size) {}
+        virtual void on_pong(ServerClient & client, const void * data, const size_t size) {}
 
-    String protocol;
-    unsigned long socket_timeout_ms;
+        String protocol;
+        unsigned long socket_timeout_ms;
 
 };
 
 class ServerClient: public ClientBase {
     public:
-        ServerClient(::Client & client, ServerInterface & server): ClientBase(client, server.socket_timeout_ms, false), server(server) {
+        ServerClient(::Client & client, ServerInterface & server): ClientBase(client, server.socket_timeout_ms, false),
+            server(server) {
         }
 
         virtual int connect(IPAddress ip, uint16_t port) override { return 0; }
@@ -167,13 +170,15 @@ class Server: public ServerInterface {
 
         class Client: public SocketOwner<ClientSocket>, public PicoWebsocket::ServerClient {
             public:
-                Client(const ClientSocket & client, ServerInterface & server): SocketOwner<ClientSocket>(client), PicoWebsocket::ServerClient(this->socket, server) {
+                Client(const ClientSocket & client, ServerInterface & server): SocketOwner<ClientSocket>(client),
+                    PicoWebsocket::ServerClient(this->socket, server) {
                     if (this->client.connected()) {
                         handshake();
                     }
                 }
 
-                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::ServerClient(this->socket, other.server) { }
+                Client(const Client & other): SocketOwner<ClientSocket>(other.socket), PicoWebsocket::ServerClient(this->socket,
+                            other.server) { }
         };
 
         Server(ServerSocket & server, const String & protocol = "", unsigned long socket_timeout_ms = 1000)
