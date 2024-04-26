@@ -490,7 +490,7 @@ ClientBase::Opcode ClientBase::read_head() {
     const bool has_mask = head[1] & (1 << 7);
     uint64_t payload_length = head[1] & 0x7f;
 
-    const size_t extended_payload_lenght_bytes = payload_length == 126 ? 2 : (payload_length == 127 ? 8 : 0);
+    const size_t extended_payload_lenght_bytes = (payload_length == 126) ? 2 : ((payload_length == 127) ? 8 : 0);
     const size_t remaining_header_size = extended_payload_lenght_bytes + (has_mask ? 4 : 0);
 
     if (remaining_header_size && !read_all(head + 2, remaining_header_size, socket_timeout_ms)) {
@@ -503,7 +503,6 @@ ClientBase::Opcode ClientBase::read_head() {
         payload_length = 0;
         for (uint8_t * end = pos + extended_payload_lenght_bytes; pos < end; ++pos) {
             payload_length = (payload_length << 8) | ((uint64_t) * pos);
-            ++pos;
         }
     }
 
