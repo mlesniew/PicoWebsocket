@@ -12,9 +12,9 @@
 #include "PicoWebsocket.h"
 
 #ifdef PICOWEBSOCKET_DEBUG
-#define PRINT_DEBUG(...) Serial.printf("DBG " __VA_ARGS__)
+#define PICOWEBSOCKET_DEBUG_PRINTF(...) Serial.printf("DBG " __VA_ARGS__)
 #else
-#define PRINT_DEBUG(...)
+#define PICOWEBSOCKET_DEBUG_PRINTF(...)
 #endif
 
 namespace {
@@ -172,7 +172,7 @@ void ClientBase::close(const uint16_t code) {
     // for diagnostic purposes.  While it's easy to implement, there
     // is little value in supporting it and by skipping it we can
     // save a few bytes.
-    PRINT_DEBUG("Sending close, code=%i\n", code);
+    PICOWEBSOCKET_DEBUG_PRINTF("Sending close, code=%i\n", code);
 
     uint8_t buffer[2];
     buffer[0] = (uint8_t)(code >> 8);
@@ -239,7 +239,7 @@ bool ClientBase::await_data_frame() {
                 }
 
                 const uint16_t code = (in_frame_size >= 2) ? (((uint16_t) buf[0] << 8) | (uint16_t) buf[1]) : 0;
-                PRINT_DEBUG("Received close, code=%i\n", code);
+                PICOWEBSOCKET_DEBUG_PRINTF("Received close, code=%i\n", code);
 
                 if (!closing) {
                     // WebSocket was not in closing state.  We're entering it now.
@@ -370,12 +370,12 @@ String ClientBase::read_http_line(const unsigned long timeout_ms = 1000) {
         if (ending) {
             // we're waiting for the trailing \n, anything else is a protocol violation
             if (c != '\n') {
-                PRINT_DEBUG("Invalid HTTP line ending\n");
+                PICOWEBSOCKET_DEBUG_PRINTF("Invalid HTTP line ending\n");
                 on_http_violation();
                 return "";
             } else {
                 buffer[pos] = '\0';
-                PRINT_DEBUG("HTTP line received: %s\n", (const char *) buffer);
+                PICOWEBSOCKET_DEBUG_PRINTF("HTTP line received: %s\n", (const char *) buffer);
                 return (const char *) buffer;
             }
         } else {
@@ -384,7 +384,7 @@ String ClientBase::read_http_line(const unsigned long timeout_ms = 1000) {
                 ending = true;
             } else if (c < 0x20 || c == 0x7f) {
                 // control character
-                PRINT_DEBUG("Illegal HTTP line character\n");
+                PICOWEBSOCKET_DEBUG_PRINTF("Illegal HTTP line character\n");
                 on_http_violation();
                 return "";
             } else {
@@ -395,14 +395,14 @@ String ClientBase::read_http_line(const unsigned long timeout_ms = 1000) {
 }
 
 void ClientBase::discard_incoming_data() {
-    PRINT_DEBUG("Discarding remaining received data\n");
+    PICOWEBSOCKET_DEBUG_PRINTF("Discarding remaining received data\n");
     while (client.available()) {
         client.read();
     }
 }
 
 void ClientBase::on_violation() {
-    PRINT_DEBUG("Websocket protocol violation\n");
+    PICOWEBSOCKET_DEBUG_PRINTF("Websocket protocol violation\n");
     close(1002);
     // After a close frame we should wait for a close reply, but since we've
     // encountered a protocol violation, we give up the connection right away.
@@ -419,7 +419,7 @@ std::pair<String, String> ClientBase::read_http_header() {
 
     const int colon_idx = request.indexOf(':');
     if (colon_idx < 0) {
-        PRINT_DEBUG("Malformed HTTP header: colon missing\n");
+        PICOWEBSOCKET_DEBUG_PRINTF("Malformed HTTP header: colon missing\n");
         on_http_violation();
         return {"", ""};
     }
@@ -433,7 +433,7 @@ std::pair<String, String> ClientBase::read_http_header() {
     // remove spaces around value
     value.trim();
 
-    PRINT_DEBUG("HTTP header received: %s: %s\n", name.c_str(), value.c_str());
+    PICOWEBSOCKET_DEBUG_PRINTF("HTTP header received: %s: %s\n", name.c_str(), value.c_str());
     return std::make_pair(name, value);
 }
 
@@ -470,7 +470,7 @@ void ClientBase::write_head(Opcode opcode, bool fin, size_t payload_length) {
         pos += 4;
     }
 
-    PRINT_DEBUG("Frame send: opcode=%1x fin=%i len=%u mask_key=%08x\n",
+    PICOWEBSOCKET_DEBUG_PRINTF("Frame send: opcode=%1x fin=%i len=%u mask_key=%08x\n",
                 opcode, fin, payload_length, is_client ? mask : 0);
 
     write_all(buffer, pos - buffer);
@@ -480,7 +480,7 @@ ClientBase::Opcode ClientBase::read_head() {
     uint8_t head[14];
 
     if (!read_all(head, 2, socket_timeout_ms)) {
-        PRINT_DEBUG("Error reading first 2 header bytes.\n");
+        PICOWEBSOCKET_DEBUG_PRINTF("Error reading first 2 header bytes.\n");
         return Opcode::ERR;
     }
 
@@ -494,7 +494,7 @@ ClientBase::Opcode ClientBase::read_head() {
     const size_t remaining_header_size = extended_payload_lenght_bytes + (has_mask ? 4 : 0);
 
     if (remaining_header_size && !read_all(head + 2, remaining_header_size, socket_timeout_ms)) {
-        PRINT_DEBUG("Error reading last %u header bytes.\n", remaining_header_size);
+        PICOWEBSOCKET_DEBUG_PRINTF("Error reading last %u header bytes.\n", remaining_header_size);
         return Opcode::ERR;
     }
 
@@ -514,7 +514,7 @@ ClientBase::Opcode ClientBase::read_head() {
     in_frame_pos = 0;
     in_frame_size = payload_length;
 
-    PRINT_DEBUG("Frame recv: opcode=%1x fin=%i len=%llu mask_key=%08x\n",
+    PICOWEBSOCKET_DEBUG_PRINTF("Frame recv: opcode=%1x fin=%i len=%llu mask_key=%08x\n",
                 opcode, fin, payload_length, is_client ? 0 : mask);
 
     // Frame header is now received successfully, run a simple check
@@ -522,25 +522,25 @@ ClientBase::Opcode ClientBase::read_head() {
     if ((uint8_t)(opcode) & 0x8) {
         // this is a control frame
         if (!fin) {
-            PRINT_DEBUG("Fragmented control frame received\n");
+            PICOWEBSOCKET_DEBUG_PRINTF("Fragmented control frame received\n");
             on_violation();
             return Opcode::ERR;
         }
         if (payload_length >= 126) {
-            PRINT_DEBUG("Control frame too long\n");
+            PICOWEBSOCKET_DEBUG_PRINTF("Control frame too long\n");
             on_violation();
             return Opcode::ERR;
         }
     }
 
     if (is_client == has_mask) {
-        PRINT_DEBUG("Masking error\n");
+        PICOWEBSOCKET_DEBUG_PRINTF("Masking error\n");
         on_violation();
         return Opcode::ERR;
     }
 
     if (payload_length > std::numeric_limits<size_t>::max()) {
-        PRINT_DEBUG("Received message too big\n");
+        PICOWEBSOCKET_DEBUG_PRINTF("Received message too big\n");
         stop();
         return Opcode::ERR;
     }
@@ -557,7 +557,7 @@ int Client::connect(const char * host, uint16_t port) {
 }
 
 void Client::on_http_error() {
-    PRINT_DEBUG("HTTP protocol error\n");
+    PICOWEBSOCKET_DEBUG_PRINTF("HTTP protocol error\n");
     discard_incoming_data();
     client.stop();
 }
@@ -571,23 +571,12 @@ void Client::on_http_timeout() {
 }
 
 void Client::on_http_violation() {
-    PRINT_DEBUG("HTTP protocol violation\n");
+    PICOWEBSOCKET_DEBUG_PRINTF("HTTP protocol violation\n");
     on_http_error();
 }
 
 bool Client::handshake(const String & host) {
     const String sec_websocket_key = gen_key();
-
-    Serial.printf(
-        "GET %s HTTP/1.1\r\n"
-        "Host: %s\r\n"
-        "Connection: Upgrade\r\n"
-        "Upgrade: websocket\r\n"
-        "Sec-WebSocket-Key: %s\r\n"
-        "Sec-WebSocket-Version: 13\r\n",
-        path.c_str(),
-        host.c_str(),
-        sec_websocket_key.c_str());
 
     client.printf(
         "GET %s HTTP/1.1\r\n"
@@ -613,7 +602,7 @@ bool Client::handshake(const String & host) {
     const int code_start = response.indexOf(' ');
     const int code_end = response.indexOf(' ', code_start + 1);
     if (code_start < 0 || code_end < 0) {
-        PRINT_DEBUG("Malformed HTTP response: %s\n", response.c_str());
+        PICOWEBSOCKET_DEBUG_PRINTF("Malformed HTTP response: %s\n", response.c_str());
         on_http_violation();
         return false;
     }
@@ -622,13 +611,13 @@ bool Client::handshake(const String & host) {
     const unsigned int code = response.substring(code_start + 1, code_end).toInt();
 
     if (version != "HTTP/1.1") {
-        PRINT_DEBUG("Invalid HTTP version: %s\n", version.c_str());
+        PICOWEBSOCKET_DEBUG_PRINTF("Invalid HTTP version: %s\n", version.c_str());
         on_http_error();
         return false;
     }
 
     if (code != 101) {
-        PRINT_DEBUG("Invalid HTTP response: %u\n", code);
+        PICOWEBSOCKET_DEBUG_PRINTF("Invalid HTTP response: %u\n", code);
         on_http_error();
         return false;
     }
@@ -665,13 +654,13 @@ bool Client::handshake(const String & host) {
     }
 
     // The websocket connection is all set up now.
-    PRINT_DEBUG("Handshake complete\n");
+    PICOWEBSOCKET_DEBUG_PRINTF("Handshake complete\n");
 
     return true;
 }
 
 void ServerClient::on_http_error(const unsigned short code, const String & message) {
-    PRINT_DEBUG("HTTP protocol error %u %s\n", code, message.c_str());
+    PICOWEBSOCKET_DEBUG_PRINTF("HTTP protocol error %u %s\n", code, message.c_str());
     discard_incoming_data();
     client.printf(
         "HTTP/1.1 %u %s\r\n"
@@ -689,7 +678,7 @@ void ServerClient::on_http_timeout() {
 }
 
 void ServerClient::on_http_violation() {
-    PRINT_DEBUG("HTTP protocol violation\n");
+    PICOWEBSOCKET_DEBUG_PRINTF("HTTP protocol violation\n");
     on_http_error(400, F("Protocol Violation"));
 }
 
@@ -706,7 +695,7 @@ void ServerClient::handshake() {
     const int url_end = request.indexOf(' ', url_start + 1);
 
     if (url_start < 0 || url_end < 0) {
-        PRINT_DEBUG("Malformed HTTP request: %s\n", request.c_str());
+        PICOWEBSOCKET_DEBUG_PRINTF("Malformed HTTP request: %s\n", request.c_str());
         on_http_violation();
         return;
     }
@@ -726,7 +715,7 @@ void ServerClient::handshake() {
     }
 
     if (!server.check_url(url)) {
-        PRINT_DEBUG("URL rejected: %s\n", url.c_str());
+        PICOWEBSOCKET_DEBUG_PRINTF("URL rejected: %s\n", url.c_str());
         on_http_error(404, F("Not found"));
         return;
     }
@@ -783,7 +772,7 @@ void ServerClient::handshake() {
     client.print("\r\n");
 
     // The websocket connection is all set up now.
-    PRINT_DEBUG("Handshake complete\n");
+    PICOWEBSOCKET_DEBUG_PRINTF("Handshake complete\n");
 }
 
 }
