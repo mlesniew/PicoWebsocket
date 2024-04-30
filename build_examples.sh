@@ -12,9 +12,24 @@ mkdir -p examples.build
 ROOT_DIR=$PWD
 
 BOARD="$1"
+PLATFORM="$(pio boards --json-output | jq -r ".[] | select(.id == \"$BOARD\") | .platform")"
+
+if [ -z "$PLATFORM" ]
+then
+	echo "Unknown board $BOARD"
+	exit 2
+fi
 
 find examples -mindepth 1 -type d | cut -d/ -f2 | sort | while read -r EXAMPLE
 do
+	COMPATIBLE_PLATFORMS="$(grep -hoiE 'platform compatibility:.*' "$ROOT_DIR/examples/$EXAMPLE/"* | cut -d: -f2- | head -n1)"
+	echo "$EXAMPLE:$COMPATIBLE_PLATFORMS"
+	if [ -n "$COMPATIBLE_PLATFORMS" ] && ! echo "$COMPATIBLE_PLATFORMS" | grep -qFiw "$PLATFORM"
+	then
+		echo "$EXAMPLE: This example is not compatible with this platform"
+		continue
+	fi
+
 	mkdir -p examples.build/$BOARD/$EXAMPLE
 	pushd examples.build/$BOARD/$EXAMPLE
 	if [ ! -f platformio.ini ]

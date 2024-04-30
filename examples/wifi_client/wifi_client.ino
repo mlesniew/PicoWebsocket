@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <WiFiServer.h>
 
 #if defined(ESP32)
 #include <WiFi.h>
@@ -23,9 +22,11 @@
 #define WIFI_PASSWORD "password"
 #endif
 
-
-::WiFiServer server(80);
-PicoWebsocket::Server<::WiFiServer> websocket_server(server);
+::WiFiClient wifi_client;
+PicoWebsocket::Client websocket(
+    wifi_client,    // Arduino Client to use
+    "/mirror"       // HTTP path (optional, defaults to /)
+);
 
 void setup() {
     Serial.begin(115200);
@@ -36,23 +37,31 @@ void setup() {
     while (WiFi.status() != WL_CONNECTED) { delay(100); }
     Serial.print("WiFi connected, IP: ");
     Serial.println(WiFi.localIP());
-
-    server.begin();
-    websocket_server.begin();
 }
 
 void loop() {
-    auto websocket = websocket_server.accept();
-    if (!websocket) {
-        return;
+    while (!websocket.connected() && !websocket.connect("ws.vi-server.org", 80)) {
+        delay(1000);
     }
+
+    Serial.println("--- connected ---");
 
     while (websocket.connected()) {
         yield();
+
         if (websocket.available()) {
             uint8_t buffer[128];
             const auto bytes_read = websocket.read(buffer, 128);
-            websocket.write(buffer, bytes_read);
+            Serial.write(buffer, bytes_read);
+        }
+
+        static unsigned int counter = 0;
+        static unsigned long last_msg = millis();
+        if (millis() - last_msg > 5000) {
+            websocket.printf("Hello from PicoWebsocket #%u\n", ++counter);
+            last_msg = millis();
         }
     }
+
+    Serial.println("--- disconnected ---");
 }

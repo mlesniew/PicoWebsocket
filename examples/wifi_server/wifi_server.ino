@@ -23,11 +23,9 @@
 #define WIFI_PASSWORD "password"
 #endif
 
-::WiFiClient wifi_client;
-PicoWebsocket::Client websocket(
-    wifi_client,    // Arduino Client to use
-    "/mirror"       // HTTP path (optional, defaults to /)
-);
+
+::WiFiServer server(80);
+PicoWebsocket::Server<::WiFiServer> websocket_server(server);
 
 void setup() {
     Serial.begin(115200);
@@ -38,29 +36,24 @@ void setup() {
     while (WiFi.status() != WL_CONNECTED) { delay(100); }
     Serial.print("WiFi connected, IP: ");
     Serial.println(WiFi.localIP());
+
+    server.begin();
+    websocket_server.begin();
 }
 
 void loop() {
-    while (!websocket.connected() && !websocket.connect("ws.vi-server.org", 80)) {
-        delay(1000);
+    auto websocket = websocket_server.accept();
+    if (!websocket) {
+        return;
     }
 
-    Serial.println("--- connected ---");
-
     while (websocket.connected()) {
+        yield();
+
         if (websocket.available()) {
             uint8_t buffer[128];
             const auto bytes_read = websocket.read(buffer, 128);
-            Serial.write(buffer, bytes_read);
-        }
-
-        static unsigned int counter = 0;
-        static unsigned long last_msg = millis();
-        if (millis() - last_msg > 5000) {
-            websocket.printf("Hello from PicoWebsocket #%u\n", ++counter);
-            last_msg = millis();
+            websocket.write(buffer, bytes_read);
         }
     }
-
-    Serial.println("--- disconnected ---");
 }
