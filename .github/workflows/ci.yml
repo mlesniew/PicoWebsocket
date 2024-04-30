@@ -1,0 +1,42 @@
+---
+name: CI
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: arduino/arduino-lint-action@v1
+        with:
+          compliance: strict
+          library-manager: submit
+          project-type: library
+
+  build:
+    strategy:
+      matrix:
+        board:
+          - d1_mini
+          - esp32dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install jq
+        run: sudo apt-get install -yq jq
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+      - name: Build examples
+        run: ./build_examples.sh ${{ matrix.board }}
