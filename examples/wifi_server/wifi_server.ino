@@ -37,7 +37,6 @@ void setup() {
     Serial.print("WiFi connected, IP: ");
     Serial.println(WiFi.localIP());
 
-    server.begin();
     websocket_server.begin();
 }
 

@@ -20,7 +20,6 @@ void setup() {
     }
     Serial.println(Ethernet.localIP());
 
-    server.begin();
     websocket_server.begin();
 }
 
