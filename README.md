@@ -110,3 +110,11 @@ void loop() {
     websocket.write(buffer, bytes_read);
 }
 ```
+
+## Related projects
+
+PicoWebsockets is used by the [PicoMQTT](https://github.com/mlesniew/PicoMQTT) library to implement MQTT over websockets.
+
+## License
+
+This library is open-source software licensed under GNU LGPLv3.
