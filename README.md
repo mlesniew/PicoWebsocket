@@ -6,6 +6,10 @@ Arduino framework sockets.
 
 ![Build](https://github.com/mlesniew/PicoWebsocket/actions/workflows/ci.yml/badge.svg) ![License](https://img.shields.io/github/license/mlesniew/PicoWebsocket) 
 
+[![arduino-library-badge](https://www.ardu-badge.com/badge/PicoWebsocket.svg?)](https://www.ardu-badge.com/PicoWebsocket) [![PlatformIO library](https://badges.registry.platformio.org/packages/mlesniew/library/PicoWebsocket.svg)](https://registry.platformio.org/libraries/mlesniew/PicoWebsocket)
+
+[![ESP8266](https://img.shields.io/badge/ESP-8266-000000.svg?longCache=true&style=flat&colorA=CC101F)](https://www.espressif.com/en/products/socs/esp8266) [![ESP32](https://img.shields.io/badge/ESP-32-000000.svg?longCache=true&style=flat&colorA=CC101F)](https://www.espressif.com/en/products/socs/esp32)
+
 PicoWebsocket let's you easily:
 * Create client WebSockets on top of any Arduino client class, e.g. `WiFiClient`, `EthernetClient` or `WiFiClientSecure`.
 * Create WebSocket servers on top of any Arduino server class, e.g. `WiFiServer`, `EthernetServer` or `WiFiServerSecure`.
