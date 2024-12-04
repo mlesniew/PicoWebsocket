@@ -22,7 +22,18 @@ namespace {
 #if defined(ESP32)
 // ESP32 doesn't have an Arduino sha1 function built-in, implement it with mbedtls
 void sha1(const String & text, uint8_t * hash) {
-    mbedtls_sha1_ret((const unsigned char *) text.c_str(), text.length(), hash);
+    // The code below replaces the following signle call:
+    //   mbedtls_sha1_ret((const unsigned char *) text.c_str(), text.length(), hash);
+    // Unfortunately mbedtls_sha1_ret is no longer available in newer mbedtls versions
+
+    mbedtls_sha1_context ctx;
+    mbedtls_sha1_init(&ctx);
+
+    mbedtls_sha1_starts(&ctx);
+    mbedtls_sha1_update(&ctx, (const unsigned char *) text.c_str(), text.length());
+    mbedtls_sha1_finish(&ctx, hash);
+
+    mbedtls_sha1_free(&ctx);
 }
 #endif
 
@@ -471,7 +482,7 @@ void ClientBase::write_head(Opcode opcode, bool fin, size_t payload_length) {
     }
 
     PICOWEBSOCKET_DEBUG_PRINTF("Frame send: opcode=%1x fin=%i len=%u mask_key=%08x\n",
-                opcode, fin, payload_length, is_client ? mask : 0);
+                               opcode, fin, payload_length, is_client ? mask : 0);
 
     write_all(buffer, pos - buffer);
 }
@@ -515,7 +526,7 @@ ClientBase::Opcode ClientBase::read_head() {
     in_frame_size = payload_length;
 
     PICOWEBSOCKET_DEBUG_PRINTF("Frame recv: opcode=%1x fin=%i len=%llu mask_key=%08x\n",
-                opcode, fin, payload_length, is_client ? 0 : mask);
+                               opcode, fin, payload_length, is_client ? 0 : mask);
 
     // Frame header is now received successfully, run a simple check
     // to see if it conforms to the RFC.
@@ -555,6 +566,16 @@ int Client::connect(IPAddress ip, uint16_t port) {
 int Client::connect(const char * host, uint16_t port) {
     return (client.connect(host, port) && handshake(host)) ? 1 : 0;
 }
+
+#ifdef PICOWEBSOCKET_EXTRA_CONNECT_METHODS
+int Client::connect(IPAddress ip, uint16_t port, int32_t timeout) {
+    return (client.connect(ip, port, timeout) && handshake(ip.toString())) ? 1 : 0;
+}
+
+int Client::connect(const char * host, uint16_t port, int32_t timeout) {
+    return (client.connect(host, port, timeout) && handshake(host)) ? 1 : 0;
+}
+#endif
 
 void Client::on_http_error() {
     PICOWEBSOCKET_DEBUG_PRINTF("HTTP protocol error\n");

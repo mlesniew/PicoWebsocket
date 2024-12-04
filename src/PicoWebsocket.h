@@ -7,6 +7,12 @@
 #define PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH 128
 #endif
 
+#ifdef ESP32
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 1, 0)
+#define PICOWEBSOCKET_EXTRA_CONNECT_METHODS
+#endif
+#endif
+
 namespace PicoWebsocket {
 
 class ClientBase: public ::Client {
@@ -101,6 +107,11 @@ class Client: public ClientBase {
         virtual int connect(IPAddress ip, uint16_t port) override;
         virtual int connect(const char * host, uint16_t port) override;
 
+#ifdef PICOWEBSOCKET_EXTRA_CONNECT_METHODS
+        virtual int connect(IPAddress ip, uint16_t port, int32_t timeout) override;
+        virtual int connect(const char * host, uint16_t port, int32_t timeout) override;
+#endif
+
         String path;
         String protocol;
 
@@ -147,6 +158,11 @@ class ServerClient: public ClientBase {
 
         virtual int connect(IPAddress ip, uint16_t port) override { return 0; }
         virtual int connect(const char * host, uint16_t port) override { return 0; }
+
+#ifdef PICOWEBSOCKET_EXTRA_CONNECT_METHODS
+        virtual int connect(IPAddress ip, uint16_t port, int32_t timeout) override { return 0; }
+        virtual int connect(const char * host, uint16_t port, int32_t timeout) override { return 0; }
+#endif
 
     protected:
         virtual void on_http_line_too_long() override;
