@@ -81,6 +81,22 @@ String get_subprotocol(const String & sec_websocket_protocol, const String & exp
     return "";
 }
 
+bool header_contains(const String & header, const String & value) {
+    int start = 0;
+    int end = 1;
+
+    while (end != -1) {
+        end = header.indexOf(',', start);
+        String element = header.substring(start, end < 0 ? header.length() : end);
+        element.trim();
+        if (element == value)
+            return true;
+        start = end + 1;
+    }
+
+    return false;
+}
+
 }
 
 namespace PicoWebsocket {
@@ -758,7 +774,7 @@ void ServerClient::handshake() {
             break;
         } else if (header.first == "connection") {
             header.second.toLowerCase();
-            connection_upgrade = (header.second == "upgrade");
+            connection_upgrade = header_contains(header.second, "upgrade");
         } else if (header.first == "upgrade") {
             header.second.toLowerCase();
             upgrade_websocket = (header.second == "websocket");
