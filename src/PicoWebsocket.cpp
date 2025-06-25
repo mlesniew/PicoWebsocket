@@ -167,7 +167,7 @@ size_t ClientBase::write_payload(const void * payload, const size_t size) {
         size_t written = 0;
         uint8_t buffer[buffer_size];
         while (written < size) {
-            const size_t chunk_size = size <= buffer_size ? size : buffer_size;
+            const size_t chunk_size =(size - written) < buffer_size ? (size - written) : buffer_size;
             memcpy(buffer, ((const char *) payload) + written, chunk_size);
             apply_mask(buffer, mask, chunk_size, written);
             if (!write_all(buffer, chunk_size)) {
