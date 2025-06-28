@@ -786,7 +786,7 @@ void ServerClient::handshake() {
         }
     }
 
-    const bool all_ok = (headers_ok && connection_upgrade && upgrade_websocket && sec_websocket_protocol
+    const bool all_ok = (headers_ok && connection_upgrade && upgrade_websocket && sec_websocket_protocol_ok
                          && (sec_websocket_key.length() == 24));
 
     if (!all_ok) {
@@ -802,7 +802,7 @@ void ServerClient::handshake() {
         "Sec-WebSocket-Accept: %s\r\n",
         calc_key(sec_websocket_key).c_str());
 
-    if (sec_websocket_protocol) {
+    if (sec_websocket_protocol.length() > 0) {
         client.printf("Sec-WebSocket-Protocol: %s\r\n", sec_websocket_protocol.c_str());
     }
 
