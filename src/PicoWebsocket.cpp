@@ -1,7 +1,7 @@
-#include <limits>
-
 #include <Arduino.h>
 #include <base64.h>
+
+#include <limits>
 
 #if defined(ESP32)
 #include <mbedtls/sha1.h>
@@ -20,17 +20,21 @@
 namespace {
 
 #if defined(ESP32)
-// ESP32 doesn't have an Arduino sha1 function built-in, implement it with mbedtls
+// ESP32 doesn't have an Arduino sha1 function built-in, implement it with
+// mbedtls
 void sha1(const String & text, uint8_t * hash) {
     // The code below replaces the following signle call:
-    //   mbedtls_sha1_ret((const unsigned char *) text.c_str(), text.length(), hash);
-    // Unfortunately mbedtls_sha1_ret is no longer available in newer mbedtls versions
+    //   mbedtls_sha1_ret((const unsigned char *) text.c_str(), text.length(),
+    //   hash);
+    // Unfortunately mbedtls_sha1_ret is no longer available in newer mbedtls
+    // versions
 
     mbedtls_sha1_context ctx;
     mbedtls_sha1_init(&ctx);
 
     mbedtls_sha1_starts(&ctx);
-    mbedtls_sha1_update(&ctx, (const unsigned char *) text.c_str(), text.length());
+    mbedtls_sha1_update(&ctx, (const unsigned char *)text.c_str(),
+                        text.length());
     mbedtls_sha1_finish(&ctx, hash);
 
     mbedtls_sha1_free(&ctx);
@@ -48,16 +52,17 @@ void apply_mask(void * data, uint32_t mask, size_t size, size_t offset = 0) {
     //   * go byte by byte until an aligned address is reached
     //   * go word by word until the remaining size is less than 4 bytes
     //   * go byte by byte again until the end of the buffer
-    uint8_t * c = (uint8_t *) data;
-    uint8_t * m = (uint8_t *) &mask;
+    uint8_t * c = (uint8_t *)data;
+    uint8_t * m = (uint8_t *)&mask;
     for (size_t i = 0; i < size; ++i) {
         c[i] ^= m[((i + offset) & 3)];
     }
 }
 
 String gen_key() {
-    uint32_t buf[] = { (uint32_t) random(), (uint32_t) random(), (uint32_t) random(), (uint32_t) random() };
-    return base64::encode((uint8_t *) buf, 16);
+    uint32_t buf[] = {(uint32_t)random(), (uint32_t)random(),
+                      (uint32_t)random(), (uint32_t)random()};
+    return base64::encode((uint8_t *)buf, 16);
 }
 
 String calc_key(const String & challenge) {
@@ -66,13 +71,15 @@ String calc_key(const String & challenge) {
     return base64::encode(hash, 20);
 }
 
-String get_subprotocol(const String & sec_websocket_protocol, const String & expected_protocol) {
-    for (int start = 0; start < (int) sec_websocket_protocol.length();) {
+String get_subprotocol(const String & sec_websocket_protocol,
+                       const String & expected_protocol) {
+    for (int start = 0; start < (int)sec_websocket_protocol.length();) {
         const int space = sec_websocket_protocol.indexOf(' ', start);
         const int end = (space < 0) ? sec_websocket_protocol.length() : space;
         if (end > start) {
             const String val = sec_websocket_protocol.substring(start, end);
-            if ((expected_protocol.length() == 0) || (expected_protocol == val)) {
+            if ((expected_protocol.length() == 0) ||
+                (expected_protocol == val)) {
                 return val;
             }
         }
@@ -87,29 +94,31 @@ bool header_contains(const String & header, const String & value) {
 
     while (end != -1) {
         end = header.indexOf(',', start);
-        String element = header.substring(start, end < 0 ? header.length() : end);
+        String element =
+            header.substring(start, end < 0 ? header.length() : end);
         element.trim();
-        if (element == value)
-            return true;
+        if (element == value) return true;
         start = end + 1;
     }
 
     return false;
 }
 
-}
+}  // namespace
 
 namespace PicoWebsocket {
 
 size_t ClientBase::write_all(const void * buffer, const size_t size) {
     size_t bytes_written = 0;
     while (client.connected() && (bytes_written < size)) {
-        bytes_written += client.write(((uint8_t *) buffer) + bytes_written, size - bytes_written);
+        bytes_written += client.write(((uint8_t *)buffer) + bytes_written,
+                                      size - bytes_written);
     }
     return bytes_written == size ? size : 0;
 }
 
-size_t ClientBase::read_all(const void * buffer, const size_t size, const unsigned long timeout_ms) {
+size_t ClientBase::read_all(const void * buffer, const size_t size,
+                            const unsigned long timeout_ms) {
     size_t bytes_read = 0;
     const unsigned long start_time = millis();
 
@@ -131,24 +140,28 @@ size_t ClientBase::read_all(const void * buffer, const size_t size, const unsign
         }
 
         // there's some data waiting in buffers to be read
-        bytes_read += client.read(((uint8_t *) buffer) + bytes_read, size - bytes_read);
+        bytes_read +=
+            client.read(((uint8_t *)buffer) + bytes_read, size - bytes_read);
     }
 
     return size;
 }
 
-ClientBase::ClientBase(::Client & client, unsigned long socket_timeout_ms, bool is_client):
-    socket_timeout_ms(socket_timeout_ms),
-    client(client),
-    is_client(is_client),
-    mask(0),
-    in_frame_size(0), in_frame_pos(0),
-    write_continue(false),
-    closing(false) {
-}
+ClientBase::ClientBase(::Client & client, unsigned long socket_timeout_ms,
+                       bool is_client)
+    : socket_timeout_ms(socket_timeout_ms),
+      client(client),
+      is_client(is_client),
+      mask(0),
+      in_frame_size(0),
+      in_frame_pos(0),
+      write_continue(false),
+      closing(false) {}
 
-size_t ClientBase::read_payload(void * buffer, const size_t size, const bool all) {
-    const size_t bytes_read = all ? read_all(buffer, size, socket_timeout_ms) : client.read((uint8_t *) buffer, size);
+size_t ClientBase::read_payload(void * buffer, const size_t size,
+                                const bool all) {
+    const size_t bytes_read = all ? read_all(buffer, size, socket_timeout_ms)
+                                  : client.read((uint8_t *)buffer, size);
 
     if (!is_client) {
         // we're the server, the received data is masked
@@ -167,8 +180,9 @@ size_t ClientBase::write_payload(const void * payload, const size_t size) {
         size_t written = 0;
         uint8_t buffer[buffer_size];
         while (written < size) {
-            const size_t chunk_size =(size - written) < buffer_size ? (size - written) : buffer_size;
-            memcpy(buffer, ((const char *) payload) + written, chunk_size);
+            const size_t chunk_size =
+                (size - written) < buffer_size ? (size - written) : buffer_size;
+            memcpy(buffer, ((const char *)payload) + written, chunk_size);
             apply_mask(buffer, mask, chunk_size, written);
             if (!write_all(buffer, chunk_size)) {
                 break;
@@ -181,7 +195,8 @@ size_t ClientBase::write_payload(const void * payload, const size_t size) {
     }
 }
 
-size_t ClientBase::write_frame(Opcode opcode, bool fin, const void * payload, size_t size) {
+size_t ClientBase::write_frame(Opcode opcode, bool fin, const void * payload,
+                               size_t size) {
     write_head(opcode, fin, size);
     return write_payload(payload, size);
 }
@@ -211,9 +226,7 @@ void ClientBase::close(const uint16_t code) {
     write_frame(Opcode::CTRL_CLOSE, true, buffer, frame_length);
 }
 
-void ClientBase::stop() {
-    stop(1000);
-}
+void ClientBase::stop() { stop(1000); }
 
 void ClientBase::stop(uint16_t code) {
     close(code);
@@ -224,7 +237,8 @@ void ClientBase::stop(uint16_t code) {
         }
 
         // data frame received, discard it
-        while ((in_frame_pos < in_frame_size) && (millis() - start_time <= socket_timeout_ms)) {
+        while ((in_frame_pos < in_frame_size) &&
+               (millis() - start_time <= socket_timeout_ms)) {
             // We could read more data at a time and improve performance,
             // but this code is rarely reached and can only run once per
             // connection, so the impact is minimal.
@@ -235,7 +249,9 @@ void ClientBase::stop(uint16_t code) {
 }
 
 size_t ClientBase::write(const void * buffer, size_t size, bool fin, bool bin) {
-    const Opcode opcode = write_continue ? Opcode::DATA_CONTINUATION : (bin ? Opcode::DATA_BINARY : Opcode::DATA_TEXT);
+    const Opcode opcode = write_continue
+                              ? Opcode::DATA_CONTINUATION
+                              : (bin ? Opcode::DATA_BINARY : Opcode::DATA_TEXT);
     write_continue = !fin;
     return write_frame(opcode, fin, buffer, size);
 }
@@ -265,14 +281,17 @@ bool ClientBase::await_data_frame() {
                     break;
                 }
 
-                const uint16_t code = (in_frame_size >= 2) ? (((uint16_t) buf[0] << 8) | (uint16_t) buf[1]) : 0;
+                const uint16_t code =
+                    (in_frame_size >= 2)
+                        ? (((uint16_t)buf[0] << 8) | (uint16_t)buf[1])
+                        : 0;
                 PICOWEBSOCKET_DEBUG_PRINTF("Received close, code=%i\n", code);
 
                 if (!closing) {
-                    // WebSocket was not in closing state.  We're entering it now.
-                    // We could send a close reply later, but we do it right away
-                    // as we're not allowed to send any data frames from this point
-                    // on anyway.
+                    // WebSocket was not in closing state.  We're entering it
+                    // now. We could send a close reply later, but we do it
+                    // right away as we're not allowed to send any data frames
+                    // from this point on anyway.
                     close(code);
                 }
 
@@ -311,7 +330,8 @@ int ClientBase::available() {
     size_t frame_remain = in_frame_size - in_frame_pos;
 
     if (!frame_remain) {
-        // no data left in current frame, let's see if another frame is available
+        // no data left in current frame, let's see if another frame is
+        // available
         if (!await_data_frame()) {
             // no data frame received, give up
             return 0;
@@ -320,11 +340,12 @@ int ClientBase::available() {
         frame_remain = in_frame_size - in_frame_pos;
     }
 
-    // We've started reading a data frame.  We're expecting at least `frame_remain` of payload
-    // data to arrive.  The underlying socket may have more data available for reading, but before consuming the
-    // next header(s), we can't be sure how much of the remaining data is the payload.  We never return
-    // more than `frame_remain`, because that's the only amount of byte's that is guaranteed
-    // to be payload data.
+    // We've started reading a data frame.  We're expecting at least
+    // `frame_remain` of payload data to arrive.  The underlying socket may have
+    // more data available for reading, but before consuming the next header(s),
+    // we can't be sure how much of the remaining data is the payload.  We never
+    // return more than `frame_remain`, because that's the only amount of byte's
+    // that is guaranteed to be payload data.
     const size_t socket_available = client.available();
     return frame_remain < socket_available ? frame_remain : socket_available;
 }
@@ -348,12 +369,13 @@ int ClientBase::peek() {
         return -1;
     }
 
-    // at this point we're guaranteed there's data waiting on the client and that the next byte is payload data
-    uint8_t c = (uint8_t) client.peek();
+    // at this point we're guaranteed there's data waiting on the client and
+    // that the next byte is payload data
+    uint8_t c = (uint8_t)client.peek();
 
     if (!is_client) {
         // we're the server, apply the mask
-        uint8_t * m = (uint8_t *) &mask;
+        uint8_t * m = (uint8_t *)&mask;
         c ^= m[in_frame_pos & 3];
     }
 
@@ -368,7 +390,6 @@ String ClientBase::read_http_line(const unsigned long timeout_ms = 1000) {
     uint8_t buffer[PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH + 1];
     size_t pos = 0;
     while (true) {
-
         if (pos >= PICOWEBSOCKET_MAX_HTTP_LINE_LENGTH) {
             // max line length reached
             on_http_line_too_long();
@@ -395,15 +416,17 @@ String ClientBase::read_http_line(const unsigned long timeout_ms = 1000) {
 
         // got a valid char
         if (ending) {
-            // we're waiting for the trailing \n, anything else is a protocol violation
+            // we're waiting for the trailing \n, anything else is a protocol
+            // violation
             if (c != '\n') {
                 PICOWEBSOCKET_DEBUG_PRINTF("Invalid HTTP line ending\n");
                 on_http_violation();
                 return "";
             } else {
                 buffer[pos] = '\0';
-                PICOWEBSOCKET_DEBUG_PRINTF("HTTP line received: %s\n", (const char *) buffer);
-                return (const char *) buffer;
+                PICOWEBSOCKET_DEBUG_PRINTF("HTTP line received: %s\n",
+                                           (const char *)buffer);
+                return (const char *)buffer;
             }
         } else {
             if (c == '\r') {
@@ -415,7 +438,7 @@ String ClientBase::read_http_line(const unsigned long timeout_ms = 1000) {
                 on_http_violation();
                 return "";
             } else {
-                buffer[pos++] = (uint8_t) c;
+                buffer[pos++] = (uint8_t)c;
             }
         }
     }
@@ -460,12 +483,12 @@ std::pair<String, String> ClientBase::read_http_header() {
     // remove spaces around value
     value.trim();
 
-    PICOWEBSOCKET_DEBUG_PRINTF("HTTP header received: %s: %s\n", name.c_str(), value.c_str());
+    PICOWEBSOCKET_DEBUG_PRINTF("HTTP header received: %s: %s\n", name.c_str(),
+                               value.c_str());
     return std::make_pair(name, value);
 }
 
 void ClientBase::write_head(Opcode opcode, bool fin, size_t payload_length) {
-
     uint8_t buffer[14];
     uint8_t * pos = buffer;
 
@@ -481,7 +504,8 @@ void ClientBase::write_head(Opcode opcode, bool fin, size_t payload_length) {
         *pos++ = (payload_length >> 0) & 0xff;
     } else {
         *pos++ = 127 | mask_bit;
-        // size_t is 4 bytes only, so the 4 most significant bytes will always be zero
+        // size_t is 4 bytes only, so the 4 most significant bytes will always
+        // be zero
         *(uint32_t *)(pos) = 0;
         pos += 4;
         *pos++ = (payload_length >> 24) & 0xff;
@@ -491,14 +515,15 @@ void ClientBase::write_head(Opcode opcode, bool fin, size_t payload_length) {
     }
 
     if (is_client) {
-        mask = (uint32_t) random();
+        mask = (uint32_t)random();
         // write mask as is, don't convert since it's already in big endian
         memcpy(pos, &mask, 4);
         pos += 4;
     }
 
-    PICOWEBSOCKET_DEBUG_PRINTF("Frame send: opcode=%1x fin=%i len=%u mask_key=%08x\n",
-                               opcode, fin, payload_length, is_client ? mask : 0);
+    PICOWEBSOCKET_DEBUG_PRINTF(
+        "Frame send: opcode=%1x fin=%i len=%u mask_key=%08x\n", opcode, fin,
+        payload_length, is_client ? mask : 0);
 
     write_all(buffer, pos - buffer);
 }
@@ -517,19 +542,24 @@ ClientBase::Opcode ClientBase::read_head() {
     const bool has_mask = head[1] & (1 << 7);
     uint64_t payload_length = head[1] & 0x7f;
 
-    const size_t extended_payload_lenght_bytes = (payload_length == 126) ? 2 : ((payload_length == 127) ? 8 : 0);
-    const size_t remaining_header_size = extended_payload_lenght_bytes + (has_mask ? 4 : 0);
+    const size_t extended_payload_lenght_bytes =
+        (payload_length == 126) ? 2 : ((payload_length == 127) ? 8 : 0);
+    const size_t remaining_header_size =
+        extended_payload_lenght_bytes + (has_mask ? 4 : 0);
 
-    if (remaining_header_size && !read_all(head + 2, remaining_header_size, socket_timeout_ms)) {
-        PICOWEBSOCKET_DEBUG_PRINTF("Error reading last %u header bytes.\n", remaining_header_size);
+    if (remaining_header_size &&
+        !read_all(head + 2, remaining_header_size, socket_timeout_ms)) {
+        PICOWEBSOCKET_DEBUG_PRINTF("Error reading last %u header bytes.\n",
+                                   remaining_header_size);
         return Opcode::ERR;
     }
 
     uint8_t * pos = head + 2;
     if (extended_payload_lenght_bytes) {
         payload_length = 0;
-        for (uint8_t * end = pos + extended_payload_lenght_bytes; pos < end; ++pos) {
-            payload_length = (payload_length << 8) | ((uint64_t) * pos);
+        for (uint8_t * end = pos + extended_payload_lenght_bytes; pos < end;
+             ++pos) {
+            payload_length = (payload_length << 8) | ((uint64_t)*pos);
         }
     }
 
@@ -541,8 +571,9 @@ ClientBase::Opcode ClientBase::read_head() {
     in_frame_pos = 0;
     in_frame_size = payload_length;
 
-    PICOWEBSOCKET_DEBUG_PRINTF("Frame recv: opcode=%1x fin=%i len=%llu mask_key=%08x\n",
-                               opcode, fin, payload_length, is_client ? 0 : mask);
+    PICOWEBSOCKET_DEBUG_PRINTF(
+        "Frame recv: opcode=%1x fin=%i len=%llu mask_key=%08x\n", opcode, fin,
+        payload_length, is_client ? 0 : mask);
 
     // Frame header is now received successfully, run a simple check
     // to see if it conforms to the RFC.
@@ -585,7 +616,8 @@ int Client::connect(const char * host, uint16_t port) {
 
 #ifdef PICOWEBSOCKET_EXTRA_CONNECT_METHODS
 int Client::connect(IPAddress ip, uint16_t port, int32_t timeout) {
-    return (client.connect(ip, port, timeout) && handshake(ip.toString())) ? 1 : 0;
+    return (client.connect(ip, port, timeout) && handshake(ip.toString())) ? 1
+                                                                           : 0;
 }
 
 int Client::connect(const char * host, uint16_t port, int32_t timeout) {
@@ -599,13 +631,9 @@ void Client::on_http_error() {
     client.stop();
 }
 
-void Client::on_http_line_too_long() {
-    on_http_error();
-}
+void Client::on_http_line_too_long() { on_http_error(); }
 
-void Client::on_http_timeout() {
-    on_http_error();
-}
+void Client::on_http_timeout() { on_http_error(); }
 
 void Client::on_http_violation() {
     PICOWEBSOCKET_DEBUG_PRINTF("HTTP protocol violation\n");
@@ -622,15 +650,10 @@ bool Client::handshake(const String & host) {
         "Upgrade: websocket\r\n"
         "Sec-WebSocket-Key: %s\r\n"
         "Sec-WebSocket-Version: 13\r\n",
-        path.c_str(),
-        host.c_str(),
-        sec_websocket_key.c_str());
+        path.c_str(), host.c_str(), sec_websocket_key.c_str());
 
     if (protocol.length()) {
-        client.printf(
-            "Sec-WebSocket-Protocol: %s\r\n",
-            protocol.c_str()
-        );
+        client.printf("Sec-WebSocket-Protocol: %s\r\n", protocol.c_str());
     }
 
     client.print("\r\n");
@@ -639,16 +662,19 @@ bool Client::handshake(const String & host) {
     const int code_start = response.indexOf(' ');
     const int code_end = response.indexOf(' ', code_start + 1);
     if (code_start < 0 || code_end < 0) {
-        PICOWEBSOCKET_DEBUG_PRINTF("Malformed HTTP response: %s\n", response.c_str());
+        PICOWEBSOCKET_DEBUG_PRINTF("Malformed HTTP response: %s\n",
+                                   response.c_str());
         on_http_violation();
         return false;
     }
 
     const String version = response.substring(0, code_start);
-    const unsigned int code = response.substring(code_start + 1, code_end).toInt();
+    const unsigned int code =
+        response.substring(code_start + 1, code_end).toInt();
 
     if (version != "HTTP/1.1") {
-        PICOWEBSOCKET_DEBUG_PRINTF("Invalid HTTP version: %s\n", version.c_str());
+        PICOWEBSOCKET_DEBUG_PRINTF("Invalid HTTP version: %s\n",
+                                   version.c_str());
         on_http_error();
         return false;
     }
@@ -676,13 +702,17 @@ bool Client::handshake(const String & host) {
             header.second.toLowerCase();
             upgrade_websocket = (header.second == "websocket");
         } else if (header.first == "sec-websocket-accept") {
-            sec_websocket_accept = (header.second == calc_key(sec_websocket_key));
+            sec_websocket_accept =
+                (header.second == calc_key(sec_websocket_key));
         } else if (header.first == "sec-websocket-protocol") {
-            sec_websocket_protocol = sec_websocket_protocol || (get_subprotocol(header.second, protocol) == protocol);
+            sec_websocket_protocol =
+                sec_websocket_protocol ||
+                (get_subprotocol(header.second, protocol) == protocol);
         }
     }
 
-    const bool all_ok = connection_upgrade && upgrade_websocket && sec_websocket_protocol && sec_websocket_accept;
+    const bool all_ok = connection_upgrade && upgrade_websocket &&
+                        sec_websocket_protocol && sec_websocket_accept;
 
     if (!all_ok) {
         // we didn't get (some) of the expected headers
@@ -696,8 +726,10 @@ bool Client::handshake(const String & host) {
     return true;
 }
 
-void ServerClient::on_http_error(const unsigned short code, const String & message) {
-    PICOWEBSOCKET_DEBUG_PRINTF("HTTP protocol error %u %s\n", code, message.c_str());
+void ServerClient::on_http_error(const unsigned short code,
+                                 const String & message) {
+    PICOWEBSOCKET_DEBUG_PRINTF("HTTP protocol error %u %s\n", code,
+                               message.c_str());
     discard_incoming_data();
     client.printf(
         "HTTP/1.1 %u %s\r\n"
@@ -732,7 +764,8 @@ void ServerClient::handshake() {
     const int url_end = request.indexOf(' ', url_start + 1);
 
     if (url_start < 0 || url_end < 0) {
-        PICOWEBSOCKET_DEBUG_PRINTF("Malformed HTTP request: %s\n", request.c_str());
+        PICOWEBSOCKET_DEBUG_PRINTF("Malformed HTTP request: %s\n",
+                                   request.c_str());
         on_http_violation();
         return;
     }
@@ -768,7 +801,8 @@ void ServerClient::handshake() {
     while (true) {
         auto header = read_http_header();
 
-        headers_ok = headers_ok && server.check_http_header(header.first, header.second);
+        headers_ok =
+            headers_ok && server.check_http_header(header.first, header.second);
 
         if (header.first == "") {
             break;
@@ -781,13 +815,17 @@ void ServerClient::handshake() {
         } else if (header.first == "sec-websocket-key") {
             sec_websocket_key = header.second;
         } else if (header.first == "sec-websocket-protocol") {
-            sec_websocket_protocol = get_subprotocol(header.second, server.protocol);
-            sec_websocket_protocol_ok = sec_websocket_protocol_ok || (sec_websocket_protocol == server.protocol);
+            sec_websocket_protocol =
+                get_subprotocol(header.second, server.protocol);
+            sec_websocket_protocol_ok =
+                sec_websocket_protocol_ok ||
+                (sec_websocket_protocol == server.protocol);
         }
     }
 
-    const bool all_ok = (headers_ok && connection_upgrade && upgrade_websocket && sec_websocket_protocol_ok
-                         && (sec_websocket_key.length() == 24));
+    const bool all_ok =
+        (headers_ok && connection_upgrade && upgrade_websocket &&
+         sec_websocket_protocol_ok && (sec_websocket_key.length() == 24));
 
     if (!all_ok) {
         on_http_error(400, F("Bad request"));
@@ -803,7 +841,8 @@ void ServerClient::handshake() {
         calc_key(sec_websocket_key).c_str());
 
     if (sec_websocket_protocol.length() > 0) {
-        client.printf("Sec-WebSocket-Protocol: %s\r\n", sec_websocket_protocol.c_str());
+        client.printf("Sec-WebSocket-Protocol: %s\r\n",
+                      sec_websocket_protocol.c_str());
     }
 
     client.print("\r\n");
@@ -812,4 +851,4 @@ void ServerClient::handshake() {
     PICOWEBSOCKET_DEBUG_PRINTF("Handshake complete\n");
 }
 
-}
+}  // namespace PicoWebsocket
