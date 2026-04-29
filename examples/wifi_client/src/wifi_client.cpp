@@ -24,8 +24,8 @@
 
 ::WiFiClient wifi_client;
 PicoWebsocket::Client websocket(
-    wifi_client,    // Arduino Client to use
-    "/mirror"       // HTTP path (optional, defaults to /)
+    wifi_client,  // Arduino Client to use
+    "/mirror"     // HTTP path (optional, defaults to /)
 );
 
 void setup() {
@@ -34,13 +34,16 @@ void setup() {
     Serial.println("Connecting to WiFi...");
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) { delay(100); }
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(100);
+    }
     Serial.print("WiFi connected, IP: ");
     Serial.println(WiFi.localIP());
 }
 
 void loop() {
-    while (!websocket.connected() && !websocket.connect("ws.vi-server.org", 80)) {
+    while (!websocket.connected() &&
+           !websocket.connect("ws.vi-server.org", 80)) {
         delay(1000);
     }
 

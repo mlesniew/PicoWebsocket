@@ -1,20 +1,19 @@
 #include <Arduino.h>
 #include <Ethernet.h>
-
 #include <PicoWebsocket.h>
 
-byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 
 EthernetClient ethernet_client;
 PicoWebsocket::Client websocket(
-    ethernet_client,    // Arduino Client to use
-    "/mirror"           // HTTP path (optional, defaults to /)
+    ethernet_client,  // Arduino Client to use
+    "/mirror"         // HTTP path (optional, defaults to /)
 );
 
 void setup() {
     Serial.begin(115200);
     Serial.println("Connecting to network...");
-    Ethernet.init(5); // ss pin
+    Ethernet.init(5);  // ss pin
     while (!Ethernet.begin(mac)) {
         Serial.println("Failed, retrying...");
     }
@@ -22,7 +21,8 @@ void setup() {
 }
 
 void loop() {
-    while (!websocket.connected() && !websocket.connect("ws.vi-server.org", 80)) {
+    while (!websocket.connected() &&
+           !websocket.connect("ws.vi-server.org", 80)) {
         delay(1000);
     }
 
