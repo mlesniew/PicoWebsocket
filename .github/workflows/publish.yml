@@ -17,5 +17,7 @@ jobs:
       - name: Install PlatformIO Core
         run: pip install -U platformio
       - name: Publish library
+        env:
+          PLATFORMIO_AUTH_TOKEN: ${{ secrets.PLATFORMIO_AUTH_TOKEN }}
         run: |
-          pio package publish --owner '${{ secrets.PLATFORMIO_OWNER }}' --token '${{ secrets.PLATFORMIO_AUTH_TOKEN }}'
+          pio package publish --non-interactive
