@@ -13,18 +13,6 @@
 
 #include <PicoWebsocket.h>
 
-#if __has_include("config.h")
-#include "config.h"
-#endif
-
-#ifndef WIFI_SSID
-#define WIFI_SSID "WiFi SSID"
-#endif
-
-#ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "password"
-#endif
-
 ::WiFiServer server(80);
 PicoWebsocket::Server<::WiFiServer> websocket_server(server);
 

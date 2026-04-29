@@ -14,14 +14,6 @@
 #include "config.h"
 #endif
 
-#ifndef WIFI_SSID
-#define WIFI_SSID "WiFi SSID"
-#endif
-
-#ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "password"
-#endif
-
 ::WiFiClient wifi_client;
 PicoWebsocket::Client websocket(
     wifi_client,  // Arduino Client to use
