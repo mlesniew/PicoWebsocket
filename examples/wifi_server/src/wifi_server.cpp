@@ -23,7 +23,6 @@
 #define WIFI_PASSWORD "password"
 #endif
 
-
 ::WiFiServer server(80);
 PicoWebsocket::Server<::WiFiServer> websocket_server(server);
 
@@ -33,7 +32,9 @@ void setup() {
     Serial.println("Connecting to WiFi...");
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) { delay(100); }
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(100);
+    }
     Serial.print("WiFi connected, IP: ");
     Serial.println(WiFi.localIP());
 

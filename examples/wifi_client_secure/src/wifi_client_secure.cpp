@@ -28,14 +28,17 @@ const char host[] = "echo.websocket.org";
     Getting the server cert:
         openssl s_client -connect echo.websocket.org:443 < /dev/null > cert.crt
     Extracting the SHA1 fingerprint:
-        openssl x509 -fingerprint -in cert.crt -noout | cut -d= -f2- | tr : ' ' | xargs -n1 printf "0x%s, "
+        openssl x509 -fingerprint -in cert.crt -noout | cut -d= -f2- | tr : ' '
+   | xargs -n1 printf "0x%s, "
 */
-const uint8_t fingerprint[] = { 0xBB, 0x1A, 0x6B, 0x23, 0xF2, 0xAC, 0xE0, 0x44, 0x36, 0xB2, 0x63, 0x1D, 0x27, 0x3F, 0x45, 0x49, 0xE1, 0x11, 0xF0, 0x68 };
+const uint8_t fingerprint[] = {0xBB, 0x1A, 0x6B, 0x23, 0xF2, 0xAC, 0xE0,
+                               0x44, 0x36, 0xB2, 0x63, 0x1D, 0x27, 0x3F,
+                               0x45, 0x49, 0xE1, 0x11, 0xF0, 0x68};
 
 ::WiFiClientSecure wifi_client;
 PicoWebsocket::Client websocket(
-    wifi_client,    // Arduino Client to use
-    "/mirror"       // HTTP path (optional, defaults to /)
+    wifi_client,  // Arduino Client to use
+    "/mirror"     // HTTP path (optional, defaults to /)
 );
 
 void setup() {
@@ -44,7 +47,9 @@ void setup() {
     Serial.println("Connecting to WiFi...");
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) { delay(100); }
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(100);
+    }
     Serial.print("WiFi connected, IP: ");
     Serial.println(WiFi.localIP());
 
@@ -53,12 +58,13 @@ void setup() {
 #if defined(ESP8266)
     wifi_client.setFingerprint(fingerprint);
 #elif defined(ESP32)
-    // The ESP32 doesn't support the simple setFingerprint() function, so for this example,
-    // we're disabling security altogether.  This will still establish an encrypted connection,
-    // but won't verify the server's identity.
+    // The ESP32 doesn't support the simple setFingerprint() function, so for
+    // this example, we're disabling security altogether.  This will still
+    // establish an encrypted connection, but won't verify the server's
+    // identity.
     wifi_client.setInsecure();
 #else
-    #error "Board not supported"
+#error "Board not supported"
 #endif
 }
 

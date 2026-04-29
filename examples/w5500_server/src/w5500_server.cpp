@@ -1,9 +1,8 @@
 #include <Arduino.h>
 #include <Ethernet.h>
-
 #include <PicoWebsocket.h>
 
-byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 
 EthernetServer server(80);
 PicoWebsocket::Server<EthernetServer> websocket_server(server);
@@ -12,7 +11,7 @@ void setup() {
     Serial.begin(115200);
 
     Serial.println("Connecting to network...");
-    Ethernet.init(5); // ss pin
+    Ethernet.init(5);  // ss pin
     while (!Ethernet.begin(mac)) {
         Serial.println("Failed, retrying...");
     }
