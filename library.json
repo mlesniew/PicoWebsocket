@@ -1,0 +1,36 @@
+{
+  "name": "PicoWebsocket",
+  "version": "1.2.1",
+  "description": "Websocket Server and Socket",
+  "keywords": [
+    "websocket",
+    "networking",
+    "client",
+    "server"
+  ],
+  "authors": [
+    {
+      "name": "Michał Leśniewski",
+      "email": "mlesniew@gmail.com",
+      "maintainer": true
+    }
+  ],
+  "license": "LGPL-3.0-or-later",
+  "homepage": "https://github.com/mlesniew/PicoWebsocket",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mlesniew/PicoWebsocket.git"
+  },
+  "frameworks": "arduino",
+  "platforms": [
+    "espressif8266",
+    "espressif32"
+  ],
+  "export": {
+    "exclude": [
+      ".env",
+      ".env.*"
+    ]
+  },
+  "dependencies": {}
+}
