@@ -4,7 +4,17 @@
 #include <limits>
 
 #if defined(ESP32)
+// mbedtls 4.x (TF-PSA-Crypto refactor, e.g. pioarduino platform-espressif32
+// 61.x) dropped the classic public mbedtls/sha1.h header; SHA-1 is only
+// reachable via the PSA Crypto API there. Detect at compile time so this still
+// builds against older platforms that ship the classic header.
+#if __has_include(<mbedtls/sha1.h>)
+#define PICOWEBSOCKET_USE_LEGACY_MBEDTLS_SHA1 1
 #include <mbedtls/sha1.h>
+#else
+#define PICOWEBSOCKET_USE_LEGACY_MBEDTLS_SHA1 0
+#include <psa/crypto.h>
+#endif
 #else
 #include <Hash.h>
 #endif
@@ -21,8 +31,9 @@ namespace {
 
 #if defined(ESP32)
 // ESP32 doesn't have an Arduino sha1 function built-in, implement it with
-// mbedtls
+// mbedtls (or the PSA Crypto API on newer mbedtls where sha1.h is gone)
 void sha1(const String & text, uint8_t * hash) {
+#if PICOWEBSOCKET_USE_LEGACY_MBEDTLS_SHA1
     // The code below replaces the following signle call:
     //   mbedtls_sha1_ret((const unsigned char *) text.c_str(), text.length(),
     //   hash);
@@ -38,6 +49,19 @@ void sha1(const String & text, uint8_t * hash) {
     mbedtls_sha1_finish(&ctx, hash);
 
     mbedtls_sha1_free(&ctx);
+#else
+    static bool psa_ready = false;
+    if (!psa_ready) {
+        if (psa_crypto_init() != PSA_SUCCESS)
+            return;
+        psa_ready = true;
+    }
+
+    size_t out_len = 0;
+    psa_hash_compute(PSA_ALG_SHA_1,
+                     (const uint8_t *)text.c_str(), text.length(),
+                     hash, 20, &out_len);
+#endif
 }
 #endif
 

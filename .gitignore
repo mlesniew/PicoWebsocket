@@ -3,3 +3,4 @@
 .env
 *.orig
 *.tar.gz
+AGENT_LEARNINGS.md
